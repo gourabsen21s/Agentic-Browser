@@ -5,7 +5,7 @@ const fs = require('fs/promises');
 let browser;
 let page;
 
-async function launchBrowser(browserType = 'chromium', headless = true) {
+async function launchBrowser(browserType = 'chromium', headless) {
     try {
         if(browser){
             console.log("[BROWSER] Browser already open, reusing existing instance");
@@ -67,7 +67,7 @@ async function takeScreenshotAndExtractDom() {
         console.log(`[BROWSER] Taking screenshot: ${screenshotPath}`);
         await currentPage.screenshot({ path: screenshotPath, fullPage: true });
 
-        console('[BROWSER] Extracting DOM content...');
+        console.log('[BROWSER] Extracting DOM content...');
         const htmlContent = await currentPage.content();
 
         // A more robust approach would involve iterating through specific elements
@@ -101,7 +101,7 @@ async function takeScreenshotAndExtractDom() {
             return elements;
         });
 
-        console('[BROWSER] DOM content and bounding boxes extracted.');
+        console.log('[BROWSER] DOM content and bounding boxes extracted.');
 
         return {
             screenshotPath: screenshotPath,

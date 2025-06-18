@@ -70,7 +70,6 @@ async function takeScreenshotAndExtractDom() {
         console('[BROWSER] Extracting DOM content...');
         const htmlContent = await currentPage.content();
 
-        // Extract visible text and their bounding boxes. This is a simplified approach.
         // A more robust approach would involve iterating through specific elements
         // or using a dedicated library, but this gives us a starting point.
         const domElementsWithBbox = await currentPage.evaluate(() => {

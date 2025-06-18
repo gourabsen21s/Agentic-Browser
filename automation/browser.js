@@ -94,7 +94,7 @@ async function takeScreenshotAndExtractDom() {
                             width: rect.width,
                             height: rect.height,
                         },
-                        selector: id ? `#${id}` : (className ? `.${className.split(' ')[0]}` : tagName) // Basic selector
+                        selector: id ? `#${id}` : (className ? `.${className.split(' ')[0]}` : tagName) 
                     });
                 }
             });

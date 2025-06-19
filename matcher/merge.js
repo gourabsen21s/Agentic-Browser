@@ -1,4 +1,3 @@
-// matcher/merge.js
 const { isOverlap, fuzzyMatchText } = require('../shared/utils');
 
 function mergeDomAndOcr(domElements, ocrElements) {

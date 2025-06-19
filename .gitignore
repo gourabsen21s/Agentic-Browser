@@ -3,3 +3,4 @@ node_modules
 logs
 __pycache__
 venv_vision_agent_new
+.gitignore

@@ -1,6 +1,8 @@
 const express = require('express');
 const {NODE_SERVER_PORT} = require("../shared/config.js");
-const { navigate, takeScreenshotAndExtractDom, closeBrowser, launchBrowser } = require('../automation/browser'); 
+const { navigate, takeScreenshotAndExtractDom, closeBrowser, launchBrowser } = require('../automation/browser');
+const { callVisionProcessor } = require('./ipc.js');
+const { mergeDomAndOcr } = require('../matcher/merge');
 
 
 const app = express();
@@ -28,7 +30,7 @@ app.post('/api/navigate-and-capture', async (req, res) => {
         console.log('[SERVER] Navigation and capture complete. Responding with data.');
         res.json({
             status: 'success',
-            message: `Mapsd to ${url} and captured data.`,
+            message: `Maped to ${url} and captured data.`,
             data: {
                 screenshotPath: pageData.screenshotPath,
                 htmlContentPreview: pageData.htmlContent.substring(0, 500) + '...', 
@@ -39,6 +41,46 @@ app.post('/api/navigate-and-capture', async (req, res) => {
 
     } catch (error) {
         console.error('[SERVER] Error during navigation and capture:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+app.post('/api/navigate-and-process', async (req, res) => {
+    const { url } = req.body;
+
+    if (!url) {
+        return res.status(400).json({ error: 'URL is required.' });
+    }
+
+    console.log(`[SERVER] Received request to navigate to: ${url}`);
+    try {
+        await launchBrowser('chromium', true);
+        await navigate(url);
+        const pageData = await takeScreenshotAndExtractDom(); // This returns screenshotPath, htmlContent, domElementsWithBbox
+
+        console.log('[SERVER] Navigation and capture complete. Now calling Vision Processor...');
+        
+        const ocrElements = await callVisionProcessor(pageData.screenshotPath);
+
+        console.log('[SERVER] Vision Processing complete. Responding with all collected data.');
+
+        const mergedActionableElements = mergeDomAndOcr(pageData.domElementsWithBbox, ocrElements);
+        console.log('[SERVER] Merging complete. Responding with all collected data.');
+        res.json({
+            status: 'success',
+            message: `Mapsd to ${url}, captured data, and processed with OCR.`,
+            data: {
+                url: url,
+                screenshotPath: pageData.screenshotPath,
+                htmlContentPreview: pageData.htmlContent.substring(0, 500) + '...',
+                domElementsFromBrowser: pageData.domElementsWithBbox,
+                ocrElements: ocrElements,
+                mergedActionableElements: mergedActionableElements 
+            }
+        });
+
+    } catch (error) {
+        console.error('[SERVER] Error during navigation and processing:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 });

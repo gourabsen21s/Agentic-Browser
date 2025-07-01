@@ -8,7 +8,7 @@ function buildDomTree(
 ) {
   const { doHighlightElements, focusHighlightIndex, viewportExpansion, debugMode } = args;
   let highlightIndex = 0; // Reset highlight index
-
+  const elementVisibilityMap = new WeakMap();
   // Add timing stack to handle recursion
   const TIMING_STACK = {
     nodeProcessing: [],
@@ -219,13 +219,17 @@ function buildDomTree(
 
   // Initialize once and reuse
   const viewportObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach(entry => {
-        elementVisibilityMap.set(entry.target, entry.isIntersecting);
-      });
-    },
-    { rootMargin: `${viewportExpansion}px` }
-  );
+  (entries) => {
+    entries.forEach(entry => {
+      elementVisibilityMap.set(entry.target, entry.isIntersecting);
+    });
+  },
+  { 
+    rootMargin: typeof viewportExpansion === 'number' 
+      ? `${viewportExpansion}px` 
+      : (viewportExpansion || '0px') 
+  }
+);
 
   /**
    * Highlights an element in the DOM and returns the index of the next element.

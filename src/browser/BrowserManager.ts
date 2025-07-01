@@ -1,4 +1,5 @@
 import { Browser, BrowserContext, chromium, Page, Cookie, Download, Frame, Request, Route } from 'playwright';
+import { DOMService, ClickableElement, DomTreeResult } from './DOMService'; // Import DOMService and its interfaces
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -6,8 +7,9 @@ export class BrowserManager {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
+  private domService: DOMService | null = null; // Declare a property for DOMService
 
-  private ensureBrowserComponents(component: 'browser' | 'context' | 'page'): void {
+  private ensureBrowserComponents(component: 'browser' | 'context' | 'page' | 'domService'): void {
     if (component === 'browser' && !this.browser) {
       throw new Error('Browser is not launched. Call launch() first.');
     }
@@ -17,13 +19,20 @@ export class BrowserManager {
     if (component === 'page' && !this.page) {
       throw new Error('Page is not initialized. Call launch() or newTab() first.');
     }
+    // New check for DOMService instance
+    if (component === 'domService' && !this.domService) {
+      throw new Error('DOMService is not initialized. Ensure a page is active (call launch(), newTab(), or switchToTab()).');
+    }
   }
 
   async launch(headless = false): Promise<void> {
     try {
       this.browser = await chromium.launch({ headless });
-      this.context = await this.browser.newContext();
+      this.context = await this.browser.newContext({
+        bypassCSP: true
+      });
       this.page = await this.context.newPage();
+      this.domService = new DOMService(this.page); // Initialize DOMService when page is created
       console.log(`Browser launched successfully in ${headless ? 'headless' : 'headful'} mode.`);
     } catch (error: any) {
       console.error('Failed to launch browser:', error);
@@ -148,17 +157,45 @@ export class BrowserManager {
     }
   }
 
-  async getDomHtml(): Promise<string> {
-    this.ensureBrowserComponents('page');
-    try {
-      const html = await this.page!.content();
-      console.log('Retrieved current page DOM HTML.');
-      return html;
-    } catch (error: any) {
-      console.error('Failed to get DOM HTML:', error);
-      throw new Error(`Failed to get DOM HTML: ${error.message || error}`);
-    }
+  // --- DOMService Delegated Methods ---
+
+  // Renamed to avoid confusion with BrowserManager's internal getDomHtml if it existed
+  async getPageDomHtml(): Promise<string> {
+    this.ensureBrowserComponents('domService');
+    return this.domService!.getDomHtml();
   }
+
+  async getClickableElementsDetails(): Promise<ClickableElement[]> {
+    this.ensureBrowserComponents('domService');
+    return this.domService!.getClickableElements();
+  }
+
+  async highlightDomTreeElements(scriptPath: string, args: any = {}): Promise<void> {
+    this.ensureBrowserComponents('domService');
+    return this.domService!.highlightDomTree(scriptPath, args);
+  }
+
+  async getStructuredDomTree(scriptPath: string, args: any = {}): Promise<DomTreeResult | null> {
+    this.ensureBrowserComponents('domService');
+    return this.domService!.getStructuredDomTree(scriptPath, args);
+  }
+
+  async getElementDetailsByIndex(scriptPath: string, index: number, args: any = {}): Promise<any | null> {
+    this.ensureBrowserComponents('domService');
+    return this.domService!.getElementByIndex(scriptPath, index, args);
+  }
+
+  async getAllVisibleTextNodes(): Promise<{ text: string; parentSelector: string }[]> {
+    this.ensureBrowserComponents('domService');
+    return this.domService!.getAllVisibleTextNodes();
+  }
+
+  async removeHighlights(): Promise<void> {
+    this.ensureBrowserComponents('domService');
+    return this.domService!.removeHighlights();
+  }
+
+  // --- End DOMService Delegated Methods ---
 
   async waitForSelector(selector: string, timeout = 10000): Promise<void> {
     this.ensureBrowserComponents('page');
@@ -210,67 +247,10 @@ export class BrowserManager {
     }
   }
 
-  async highlightElements(scriptPath: string, args: any = {}): Promise<void> {
-    this.ensureBrowserComponents('page');
-    if (!scriptPath || typeof scriptPath !== 'string') {
-      throw new Error('Invalid script path provided for highlightElements(). Path must be a non-empty string.');
-    }
-    if (!fs.existsSync(scriptPath)) {
-      throw new Error(`Highlight script file not found: ${scriptPath}`);
-    }
-    try {
-      const script = fs.readFileSync(scriptPath, 'utf8');
-      await this.page!.addScriptTag({ content: script });
-      await this.page!.evaluate((evalArgs) => {
-        if (typeof (window as any).buildDomTree === 'function') {
-          (window as any).buildDomTree(evalArgs);
-        } else {
-          throw new Error('window.buildDomTree function not found after script injection.');
-        }
-      }, args);
-      console.log(`Elements highlighted using script: ${scriptPath}`);
-    } catch (error: any) {
-      console.error(`Failed to highlight elements using script ${scriptPath}:`, error);
-      throw new Error(`Failed to highlight elements using script ${scriptPath}: ${error.message || error}`);
-    }
-  }
+  // Removed redundant DOM-related methods, as they are now handled by DOMService
+  // async highlightElements(...) {} - REMOVED
+  // async getAllClickableElements(...) {} - REMOVED
 
-  async getAllClickableElements(): Promise<
-    { selector: string; boundingBox: { x: number; y: number; width: number; height: number } | null }[]
-  > {
-    this.ensureBrowserComponents('page');
-    try {
-      const clickableElements = await this.page!.evaluate(() => {
-        const elements = Array.from(document.querySelectorAll('a, button, [role="button"], input[type="submit"], input[type="button"], [onclick], [tabindex]:not([tabindex="-1"])'));
-        return elements.map((el, idx) => {
-          const rect = el.getBoundingClientRect();
-          let selector = el.tagName.toLowerCase();
-          if (el.id) selector += `#${el.id}`;
-          else if (el.className) selector += `.${Array.from(el.classList).join('.')}`;
-          else {
-            const parent = el.parentElement;
-            if (parent) {
-              const siblings = Array.from(parent.children);
-              const sameTagSiblings = siblings.filter(sibling => sibling.tagName === el.tagName);
-              const indexInSameTag = sameTagSiblings.indexOf(el) + 1;
-              selector = `${parent.tagName.toLowerCase()} > ${el.tagName.toLowerCase()}:nth-of-type(${indexInSameTag})`;
-            } else {
-              selector += `:nth-of-type(${idx + 1})`;
-            }
-          }
-          return {
-            selector,
-            boundingBox: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
-          };
-        });
-      });
-      console.log(`Found ${clickableElements.length} clickable elements.`);
-      return clickableElements;
-    } catch (error: any) {
-      console.error('Failed to get all clickable elements:', error);
-      throw new Error(`Failed to get all clickable elements: ${error.message || error}`);
-    }
-  }
 
   async uploadFile(selector: string, filePath: string): Promise<void> {
     this.ensureBrowserComponents('page');
@@ -321,6 +301,7 @@ export class BrowserManager {
     try {
       const newPage = await this.context!.newPage();
       this.page = newPage;
+      this.domService = new DOMService(this.page); // Re-initialize DOMService for the new page
       if (url) {
         await this.page.goto(url);
         console.log(`New tab opened and navigated to: ${url}`);
@@ -344,6 +325,7 @@ export class BrowserManager {
         throw new Error(`Tab index ${index} out of range. There are only ${pages.length} tabs open.`);
       }
       this.page = pages[index];
+      this.domService = new DOMService(this.page); // Update DOMService to the switched page
       console.log(`Switched to tab at index: ${index}`);
     } catch (error: any) {
       console.error(`Failed to switch to tab at index ${index}:`, error);
@@ -388,9 +370,11 @@ export class BrowserManager {
       const remainingPages = this.context!.pages();
       if (remainingPages.length > 0) {
         this.page = remainingPages[0];
+        this.domService = new DOMService(this.page); // Update DOMService to the new active page
         console.log('Switched to the first available tab.');
       } else {
         this.page = null;
+        this.domService = null; // No page means no DOMService instance
         console.log('No tabs remaining in the context.');
       }
     } catch (error: any) {
@@ -499,7 +483,6 @@ export class BrowserManager {
     if (!cookie || typeof cookie !== 'object') {
       throw new Error('Invalid cookie object provided for setCookie(). Must be a valid Cookie object.');
     }
-    // Corrected: Removed `cookie.url` from the validation
     if (!cookie.name || !cookie.value || (!cookie.domain && !cookie.path)) {
         console.warn('Cookie object might be incomplete. Recommended properties: name, value, and either domain or path (or both).');
     }
@@ -643,6 +626,7 @@ export class BrowserManager {
       }
       this.context = await this.browser!.newContext({ ...device });
       this.page = await this.context.newPage();
+      this.domService = new DOMService(this.page); // Re-initialize DOMService for the new page
       console.log(`Device "${deviceName}" emulated successfully.`);
     } catch (error: any) {
       console.error(`Failed to emulate device "${deviceName}":`, error);
@@ -662,6 +646,7 @@ export class BrowserManager {
       }
       this.context = await this.browser!.newContext({ userAgent });
       this.page = await this.context.newPage();
+      this.domService = new DOMService(this.page); // Re-initialize DOMService for the new page
       console.log(`User agent set to: "${userAgent}".`);
     } catch (error: any) {
       console.error(`Failed to set user agent to "${userAgent}":`, error);
@@ -717,6 +702,7 @@ export class BrowserManager {
       this.browser = null;
       this.context = null;
       this.page = null;
+      this.domService = null; 
     }
   }
 }

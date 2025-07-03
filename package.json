@@ -11,10 +11,25 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "playwright": "^1.53.2"
+    "@langchain/azure-openai": "^0.0.11",
+    "@langchain/core": "^0.3.61",
+    "@langchain/google-genai": "^0.2.14",
+    "@langchain/openai": "^0.5.16",
+    "dotenv": "^17.0.1",
+    "events": "^3.3.0",
+    "express": "^5.1.0",
+    "playwright": "^1.53.2",
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0",
+    "ws": "^8.18.3",
+    "zod": "^3.25.67"
   },
   "devDependencies": {
-    "@types/node": "^24.0.8",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.10",
+    "@types/uuid": "^10.0.0",
+    "@types/winston": "^2.4.4",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.8.3"
   }
 }

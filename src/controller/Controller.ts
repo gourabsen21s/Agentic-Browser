@@ -1,15 +1,11 @@
-import { ActionRegistry, ActionDefinition, ActionParameter } from './ActionRegistry';
-import { BrowserManager } from '../browser/BrowserManager';
+// src/controller/Controller.ts
 
-export interface ActionResult {
-  success: boolean;
-  action: string;
-  parameters: Record<string, any>;
-  result?: any;
-  error?: string;
-  timestamp: Date;
-  duration: number;
-}
+import { ActionRegistry } from '../agent/ActionRegistry';
+import { BrowserManager } from '../browser/BrowserManager';
+import { getLogger } from '../shared/logger';
+import { ActionDefinition, ActionResult, AgentOutput, BrowserStateSummary, StepMetadata, Page, ActionModel } from '../shared/types';
+
+const logger = getLogger('Controller');
 
 export class Controller {
   private registry: ActionRegistry;
@@ -25,31 +21,31 @@ export class Controller {
 
   async init(headless: boolean = false): Promise<void> {
     if (this.isBrowserLaunched) {
-      console.warn('Browser is already launched.');
+      logger.warn('Browser is already launched. Skipping initialization.');
       return;
     }
     try {
       await this.browserManager.launch(headless);
       this.isBrowserLaunched = true;
-      console.log('Controller initialized: Browser launched.');
+      logger.info('Controller initialized: Browser launched.');
     } catch (error: any) {
-      console.error('Failed to initialize Controller (launch browser):', error);
+      logger.error('Failed to initialize Controller (launch browser):', error);
       throw error;
     }
   }
 
   async shutdown(): Promise<void> {
     if (!this.isBrowserLaunched) {
-      console.warn('Browser is not launched. No need to shut down.');
+      logger.warn('Browser is not launched. No need to shut down.');
       return;
     }
     try {
       await this.browserManager.close();
       this.isBrowserLaunched = false;
       this.clearActionHistory();
-      console.log('Controller shut down: Browser closed.');
+      logger.info('Controller shut down: Browser closed.');
     } catch (error: any) {
-      console.error('Failed to shut down Controller (close browser):', error);
+      logger.error('Failed to shut down Controller (close browser):', error);
       throw error;
     }
   }
@@ -66,7 +62,7 @@ export class Controller {
           pattern: '^https?://.+'
         }
       },
-      execute: async (params: Record<string, any>) => { 
+      execute: async (params: Record<string, any>) => {
         const { url } = params;
         await this.browserManager.goto(url);
         return { message: `Mapsd to ${url}` };
@@ -74,8 +70,92 @@ export class Controller {
     });
 
     this.registry.register({
+      name: 'refresh',
+      description: 'Refreshes the current page',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        await this.browserManager.refresh();
+        return { message: 'Page refreshed successfully.' };
+      }
+    });
+
+    this.registry.register({
+      name: 'goBack',
+      description: 'Navigates back in the browser history',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        await this.browserManager.goBack();
+        return { message: 'Navigated back in history.' };
+      }
+    });
+
+    this.registry.register({
+      name: 'goForward',
+      description: 'Navigates forward in the browser history',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        await this.browserManager.goForward();
+        return { message: 'Navigated forward in history.' };
+      }
+    });
+
+    this.registry.register({
+      name: 'newTab',
+      description: 'Opens a new browser tab and switches to it. Can navigate to a URL.',
+      parameters: {
+        url: {
+          type: 'string',
+          required: false,
+          description: 'Optional URL to navigate to in the new tab.'
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { url } = params;
+        await this.browserManager.newTab(url);
+        return { message: url ? `Opened new tab and navigated to ${url}` : 'Opened new tab' };
+      }
+    });
+
+    this.registry.register({
+      name: 'switchToTab',
+      description: 'Switches to an existing browser tab by its 0-based index.',
+      parameters: {
+        index: {
+          type: 'number',
+          required: true,
+          description: 'The 0-based index of the tab to switch to.',
+          minimum: 0
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { index } = params;
+        await this.browserManager.switchToTab(index);
+        return { message: `Switched to tab at index ${index}` };
+      }
+    });
+
+    this.registry.register({
+      name: 'closeTab',
+      description: 'Closes the current or a specified browser tab.',
+      parameters: {
+        index: {
+          type: 'number',
+          required: false,
+          description: 'Optional 0-based index of the tab to close. Closes current tab if not specified.',
+          minimum: 0
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { index } = params;
+        await this.browserManager.closeTab(index);
+        return { message: index !== undefined ? `Closed tab at index ${index}` : 'Closed current tab' };
+      }
+    });
+
+    // --- Interaction Actions ---
+    this.registry.register({
       name: 'click',
-      description: 'Click an element by selector',
+      description: 'Click an element by CSS selector',
       parameters: {
         selector: {
           type: 'string',
@@ -89,7 +169,7 @@ export class Controller {
           enum: [true, false]
         }
       },
-      execute: async (params: Record<string, any>) => { 
+      execute: async (params: Record<string, any>) => {
         const { selector, waitForSelector } = params;
         if (waitForSelector) {
           await this.browserManager.waitForSelector(selector);
@@ -120,16 +200,123 @@ export class Controller {
           enum: [true, false]
         }
       },
-      execute: async (params: Record<string, any>) => { 
+      execute: async (params: Record<string, any>) => {
         const { selector, text, clearFirst } = params;
         if (clearFirst) {
-          await this.browserManager.type(selector, '');
+          await this.browserManager.type(selector, ''); // Clear by typing empty string
         }
         await this.browserManager.type(selector, text);
         return { message: `Typed "${text}" into ${selector}` };
       }
     });
 
+    this.registry.register({
+      name: 'scrollTo',
+      description: 'Scrolls the page to make a specific element visible.',
+      parameters: {
+        selector: {
+          type: 'string',
+          required: true,
+          description: 'CSS selector of the element to scroll into view.'
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { selector } = params;
+        await this.browserManager.scrollTo(selector);
+        return { message: `Scrolled to element: ${selector}` };
+      }
+    });
+
+    this.registry.register({
+      name: 'selectOption',
+      description: 'Selects an option in a <select> dropdown element by its value.',
+      parameters: {
+        selector: {
+          type: 'string',
+          required: true,
+          description: 'CSS selector of the <select> element.'
+        },
+        value: {
+          type: 'string',
+          required: true,
+          description: 'The value attribute of the <option> to select.'
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { selector, value } = params;
+        await this.browserManager.selectOption(selector, value);
+        return { message: `Selected option "${value}" in dropdown ${selector}.` };
+      }
+    });
+
+    this.registry.register({
+      name: 'uploadFile',
+      description: 'Uploads a file to an <input type="file"> element.',
+      parameters: {
+        selector: {
+          type: 'string',
+          required: true,
+          description: 'The CSS selector of the file input element.'
+        },
+        filePath: {
+          type: 'string',
+          required: true,
+          description: 'The absolute path to the file to upload.'
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { selector, filePath } = params;
+        await this.browserManager.uploadFile(selector, filePath);
+        return { message: `File ${filePath} uploaded to ${selector}.` };
+      }
+    });
+
+    this.registry.register({
+      name: 'dragAndDrop',
+      description: 'Performs a drag-and-drop action from a source element to a target element.',
+      parameters: {
+        sourceSelector: {
+          type: 'string',
+          required: true,
+          description: 'The CSS selector of the element to drag.'
+        },
+        targetSelector: {
+          type: 'string',
+          required: true,
+          description: 'The CSS selector of the element to drop onto.'
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { sourceSelector, targetSelector } = params;
+        await this.browserManager.dragAndDrop(sourceSelector, targetSelector);
+        return { message: `Dragged from ${sourceSelector} to ${targetSelector}.` };
+      }
+    });
+
+    this.registry.register({
+      name: 'handleDialog',
+      description: 'Handles JavaScript dialogs (alerts, confirms, prompts) by accepting or dismissing them.',
+      parameters: {
+        accept: {
+          type: 'boolean',
+          required: false,
+          description: 'Whether to accept (true) or dismiss (false) the dialog (default: true).',
+          enum: [true, false]
+        },
+        promptText: {
+          type: 'string',
+          required: false,
+          description: 'Optional text to enter if the dialog is a prompt.'
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { accept, promptText } = params;
+        await this.browserManager.handleDialog(accept, promptText);
+        return { message: `Dialog handler set: accept=${accept}, promptText=${promptText || 'N/A'}.` };
+      }
+    });
+
+    // --- Data Extraction Actions ---
     this.registry.register({
       name: 'extractText',
       description: 'Extract text content from an element',
@@ -140,10 +327,62 @@ export class Controller {
           description: 'CSS selector of the element to extract text from'
         }
       },
-      execute: async (params: Record<string, any>) => { 
+      execute: async (params: Record<string, any>) => {
         const { selector } = params;
         const text = await this.browserManager.extractText(selector);
         return { text: text, message: `Extracted text from ${selector}` };
+      }
+    });
+
+    this.registry.register({
+      name: 'extractAttribute',
+      description: 'Extracts the value of a specified HTML attribute from an element.',
+      parameters: {
+        selector: {
+          type: 'string',
+          required: true,
+          description: 'The CSS selector of the element.'
+        },
+        attribute: {
+          type: 'string',
+          required: true,
+          description: 'The name of the attribute to extract (e.g., "href", "value").'
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { selector, attribute } = params;
+        const value = await this.browserManager.extractAttribute(selector, attribute);
+        return { attribute: attribute, value: value, message: `Extracted attribute "${attribute}" from ${selector}.` };
+      }
+    });
+
+    this.registry.register({
+      name: 'getPageHtml',
+      description: 'Get the full HTML content of the current page',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        const html = await this.browserManager.getPageDomHtml();
+        return { html: html, message: 'Full page HTML retrieved' };
+      }
+    });
+
+    this.registry.register({
+      name: 'getClickableElements',
+      description: 'Get a list of all clickable elements on the current page.',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        const clickableElements = await this.browserManager.getClickableElementsDetails();
+        return { elements: clickableElements, message: `Found ${clickableElements.length} clickable elements.` };
+      }
+    });
+
+    this.registry.register({
+      name: 'getAllVisibleTextNodes',
+      description: 'Extracts all visible text nodes from the current page.',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        const textNodes = await this.browserManager.getAllVisibleTextNodes();
+        return { textNodes: textNodes, message: `Found ${textNodes.length} visible text nodes.` };
       }
     });
 
@@ -155,7 +394,7 @@ export class Controller {
           type: 'string',
           required: false,
           description: 'Optional path to save the screenshot (e.g., "screenshots/my_screenshot.png"). If not provided, returns base64 string.',
-          pattern: '^.+\\.(png|jpeg|jpg)$'
+          pattern: '^.+\\.(png|jpeg|jpg)$' // Basic file extension check
         },
         fullPage: {
           type: 'boolean',
@@ -164,23 +403,14 @@ export class Controller {
           enum: [true, false]
         }
       },
-      execute: async (params: Record<string, any>) => { 
+      execute: async (params: Record<string, any>) => {
         const { path, fullPage } = params;
         const base64Image = await this.browserManager.screenshot(path, fullPage);
         return { message: path ? `Screenshot saved to ${path}` : 'Screenshot captured as base64', image: base64Image };
       }
     });
 
-    this.registry.register({
-      name: 'getPageHtml',
-      description: 'Get the full HTML content of the current page',
-      parameters: {},
-      execute: async (params: Record<string, any>) => { 
-        const html = await this.browserManager.getPageDomHtml();
-        return { html: html, message: 'Full page HTML retrieved' };
-      }
-    });
-
+    // --- Debugging/Advanced Actions ---
     this.registry.register({
       name: 'highlightElements',
       description: 'Highlight interactive elements on the page for visual inspection or selection.',
@@ -223,7 +453,7 @@ export class Controller {
           }
         }
       },
-      execute: async (params: Record<string, any>) => { 
+      execute: async (params: Record<string, any>) => {
         const { scriptPath, options } = params;
         await this.browserManager.highlightDomTreeElements(scriptPath, options || {});
         return { message: 'Elements highlighted successfully.' };
@@ -231,329 +461,303 @@ export class Controller {
     });
 
     this.registry.register({
-      name: 'getClickableElements',
-      description: 'Get a list of all clickable elements on the current page.',
-      parameters: {},
-      execute: async (params: Record<string, any>) => { 
-        const clickableElements = await this.browserManager.getClickableElementsDetails();
-        return { elements: clickableElements, message: `Found ${clickableElements.length} clickable elements.` };
-      }
-    });
-
-    this.registry.register({
       name: 'removeHighlights',
       description: 'Remove all active highlights from the page.',
       parameters: {},
-      execute: async (params: Record<string, any>) => { 
+      execute: async (params: Record<string, any>) => {
         await this.browserManager.removeHighlights();
         return { message: 'All highlights removed from the page.' };
       }
     });
 
     this.registry.register({
-      name: 'scrollTo',
-      description: 'Scrolls the page to make a specific element visible.',
-      parameters: {
-        selector: {
-          type: 'string',
-          required: true,
-          description: 'CSS selector of the element to scroll into view.'
-        }
-      },
-      execute: async (params: Record<string, any>) => { 
-        const { selector } = params;
-        await this.browserManager.scrollTo(selector);
-        return { message: `Scrolled to element: ${selector}` };
+      name: 'getCookies',
+      description: 'Retrieves all cookies for the current browser context.',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        const cookies = await this.browserManager.getCookies();
+        return { cookies: cookies, message: `Retrieved ${cookies.length} cookies.` };
       }
     });
 
     this.registry.register({
-  name: 'waitForSelector',
-  description: 'Wait for an element to appear in the DOM.',
-  parameters: {
-    selector: {
-      type: 'string',
-      required: true,
-      description: 'CSS selector to wait for'
-    },
-    timeout: {
-      type: 'number',
-      required: false,
-      description: 'Timeout in milliseconds (default: 10000)'
-    }
-  },
-  execute: async (params: Record<string, any>) => {
-    await this.browserManager.waitForSelector(params.selector, params.timeout);
-    return { message: `Waited for selector: ${params.selector}` };
-  }
-});
-this.registry.register({
-  name: 'refresh',
-  description: 'Refresh the current page.',
-  parameters: {},
-  execute: async (_params: Record<string, any>) => {
-    await this.browserManager.refresh();
-    return { message: 'Page refreshed.' };
-  }
-});
-
-this.registry.register({
-  name: 'goBack',
-  description: 'Go back in browser history.',
-  parameters: {},
-  execute: async (_params: Record<string, any>) => {
-    await this.browserManager.goBack();
-    return { message: 'Navigated back in history.' };
-  }
-});
-
-this.registry.register({
-  name: 'goForward',
-  description: 'Go forward in browser history.',
-  parameters: {},
-  execute: async (_params: Record<string, any>) => {
-    await this.browserManager.goForward();
-    return { message: 'Navigated forward in history.' };
-  }
-});
-
-this.registry.register({
-  name: 'newTab',
-  description: 'Open a new browser tab, optionally navigating to a URL.',
-  parameters: {
-    url: {
-      type: 'string',
-      required: false,
-      description: 'URL to open in the new tab (optional).'
-    }
-  },
-  execute: async (params: Record<string, any>) => {
-    await this.browserManager.newTab(params.url);
-    return { message: params.url ? `New tab opened and navigated to ${params.url}` : 'New tab opened.' };
-  }
-});
-
-this.registry.register({
-  name: 'switchTab',
-  description: 'Switch to a specific tab by its index.',
-  parameters: {
-    index: {
-      type: 'number',
-      required: true,
-      description: 'Tab index to switch to (0-based).'
-    }
-  },
-  execute: async (params: Record<string, any>) => {
-    await this.browserManager.switchToTab(params.index);
-    return { message: `Switched to tab at index ${params.index}.` };
-  }
-});
-
-this.registry.register({
-  name: 'closeTab',
-  description: 'Close a tab by its index (or the current tab if not specified).',
-  parameters: {
-    index: {
-      type: 'number',
-      required: false,
-      description: 'Tab index to close (optional).'
-    }
-  },
-  execute: async (params: Record<string, any>) => {
-    await this.browserManager.closeTab(params.index);
-    return { message: params.index !== undefined ? `Closed tab at index ${params.index}.` : 'Closed current tab.' };
-  }
-});
-
-this.registry.register({
-  name: 'uploadFile',
-  description: 'Upload a file to a file input element.',
-  parameters: {
-    selector: {
-      type: 'string',
-      required: true,
-      description: 'CSS selector of the file input element.'
-    },
-    filePath: {
-      type: 'string',
-      required: true,
-      description: 'Path to the file to upload.'
-    }
-  },
-  execute: async (params: Record<string, any>) => {
-    await this.browserManager.uploadFile(params.selector, params.filePath);
-    return { message: `File ${params.filePath} uploaded to ${params.selector}.` };
-  }
-});
-
-this.registry.register({
-  name: 'dragAndDrop',
-  description: 'Drag an element and drop it onto another element.',
-  parameters: {
-    sourceSelector: {
-      type: 'string',
-      required: true,
-      description: 'CSS selector of the element to drag.'
-    },
-    targetSelector: {
-      type: 'string',
-      required: true,
-      description: 'CSS selector of the drop target element.'
-    }
-  },
-  execute: async (params: Record<string, any>) => {
-    await this.browserManager.dragAndDrop(params.sourceSelector, params.targetSelector);
-    return { message: `Dragged ${params.sourceSelector} to ${params.targetSelector}.` };
-  }
-});
-
-this.registry.register({
-  name: 'setLocalStorage',
-  description: 'Set a value in localStorage.',
-  parameters: {
-    key: {
-      type: 'string',
-      required: true,
-      description: 'Key to set in localStorage.'
-    },
-    value: {
-      type: 'string',
-      required: true,
-      description: 'Value to set for the key.'
-    }
-  },
-  execute: async (params: Record<string, any>) => {
-    await this.browserManager.setLocalStorage(params.key, params.value);
-    return { message: `Set localStorage key "${params.key}" to "${params.value}".` };
-  }
-});
-
-this.registry.register({
-  name: 'getLocalStorage',
-  description: 'Get a value from localStorage.',
-  parameters: {
-    key: {
-      type: 'string',
-      required: true,
-      description: 'Key to get from localStorage.'
-    }
-  },
-  execute: async (params: Record<string, any>) => {
-    const value = await this.browserManager.getLocalStorage(params.key);
-    return { key: params.key, value, message: `Got localStorage key "${params.key}".` };
-  }
-});
+      name: 'setCookie',
+      description: 'Sets a cookie in the current browser context.',
+      parameters: {
+        cookie: {
+          type: 'object',
+          required: true,
+          description: 'The cookie object to set (e.g., { name: "mycookie", value: "myvalue", url: "http://example.com" }).',
+          properties: {
+            name: { type: 'string', required: true, description: 'Cookie name' },
+            value: { type: 'string', required: true, description: 'Cookie value' },
+            url: { type: 'string', required: false, description: 'Cookie URL (required if domain/path not set)' },
+            domain: { type: 'string', required: false, description: 'Cookie domain' },
+            path: { type: 'string', required: false, description: 'Cookie path' },
+            expires: { type: 'number', required: false, description: 'Expiration date as Unix timestamp' },
+            httpOnly: { type: 'boolean', required: false, description: 'HttpOnly flag' },
+            secure: { type: 'boolean', required: false, description: 'Secure flag' },
+            sameSite: { type: 'string', required: false, description: 'SameSite attribute ("Strict", "Lax", "None")', enum: ["Strict", "Lax", "None"] }
+          }
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { cookie } = params;
+        await this.browserManager.setCookie(cookie);
+        return { message: `Cookie "${cookie.name}" set.` };
+      }
+    });
 
     this.registry.register({
-      name: 'selectOption',
-      description: 'Selects an option in a <select> dropdown element by its value.',
+      name: 'clearCookies',
+      description: 'Clears all cookies from the current browser context.',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        await this.browserManager.clearCookies();
+        return { message: 'All cookies cleared.' };
+      }
+    });
+
+    this.registry.register({
+      name: 'getLocalStorage',
+      description: 'Retrieves a value from the current page\'s localStorage.',
       parameters: {
-        selector: {
+        key: {
           type: 'string',
           required: true,
-          description: 'CSS selector of the <select> element.'
+          description: 'The key of the item to retrieve.'
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        const { key } = params;
+        const value = await this.browserManager.getLocalStorage(key);
+        return { key: key, value: value, message: `Retrieved localStorage key "${key}".` };
+      }
+    });
+
+    this.registry.register({
+      name: 'setLocalStorage',
+      description: 'Sets a key-value pair in the current page\'s localStorage.',
+      parameters: {
+        key: {
+          type: 'string',
+          required: true,
+          description: 'The key to set.'
         },
         value: {
           type: 'string',
           required: true,
-          description: 'The value attribute of the <option> to select.'
+          description: 'The value to set.'
         }
       },
-      execute: async (params: Record<string, any>) => { 
-        const { selector, value } = params;
-        await this.browserManager.selectOption(selector, value);
-        return { message: `Selected option "${value}" in dropdown ${selector}.` };
+      execute: async (params: Record<string, any>) => {
+        const { key, value } = params;
+        await this.browserManager.setLocalStorage(key, value);
+        return { message: `Set localStorage key "${key}" to "${value}".` };
       }
     });
 
-    console.log('Default actions registered successfully.');
+    this.registry.register({
+      name: 'clearLocalStorage',
+      description: 'Clears all data from the current page\'s localStorage for its origin.',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        await this.browserManager.clearLocalStorage();
+        return { message: 'localStorage cleared.' };
+      }
+    });
+
+    this.registry.register({
+      name: 'clearSessionStorage',
+      description: 'Clears all data from the current page\'s sessionStorage for its origin.',
+      parameters: {},
+      execute: async (params: Record<string, any>) => {
+        await this.browserManager.clearSessionStorage();
+        return { message: 'sessionStorage cleared.' };
+      }
+    });
+
+    // --- Agent Control / Completion Action ---
+    this.registry.register({
+      name: 'done',
+      description: 'Indicates the task is completed or cannot proceed. Should be the last action.',
+      parameters: {
+        success: {
+          type: 'boolean',
+          required: true,
+          description: 'True if the task was successfully completed, false otherwise.'
+        },
+        text: {
+          type: 'string',
+          required: true,
+          description: 'A summary of the outcome or why the task could not be completed.'
+        }
+      },
+      execute: async (params: Record<string, any>) => {
+        // This action primarily signals completion. It doesn't perform a browser action itself.
+        // The `is_done: true` flag in the return value is crucial for the AgentService.
+        return { message: `Task finished: ${params.text}`, is_done: true };
+      }
+    });
+
+    logger.info('Default actions registered successfully.');
   }
 
+  /**
+   * Executes a registered action by its name with provided parameters.
+   * This method handles action validation, execution, and logs the result
+   * to the action history.
+   * @param actionName The name of the action to execute.
+   * @param parameters An object containing the parameters for the action.
+   * @returns A Promise that resolves with an `ActionResult` object.
+   */
   async executeAction(actionName: string, parameters: Record<string, any> = {}): Promise<ActionResult> {
-    const startTime = Date.now();
-    const timestamp = new Date();
+    const startTime = Date.now(); // Record start time for duration calculation
+    const timestamp = new Date(); // Record timestamp
 
+    // Ensure browser is launched before executing any action that requires it,
+    // except for the 'init' action itself (which launches the browser).
     if (!this.isBrowserLaunched && actionName !== 'init') {
+      const errorMsg = 'Browser is not launched. Call "init()" first.';
       const actionResult: ActionResult = {
         success: false,
         action: actionName,
         parameters,
-        error: 'Browser is not launched. Call "init()" first.',
+        error: errorMsg,
         timestamp,
         duration: 0
       };
-      this.actionHistory.push(actionResult);
-      console.error(`❌ Action "${actionName}" failed: Browser is not launched. Call "init()" first.`);
-      return actionResult;
+      this.actionHistory.push(actionResult); // Log the failure to history
+      logger.error(`❌ Action "${actionName}" failed: ${errorMsg}`);
+      return actionResult; // Return the failed result
     }
 
     try {
+      // Delegate to the ActionRegistry to validate and execute the action.
+      // The `executeAction` method of registry will handle parameter validation.
       const result = await this.registry.executeAction(actionName, parameters);
 
-      const duration = Date.now() - startTime;
+      const duration = Date.now() - startTime; // Calculate duration
+      // Check if the action explicitly signaled completion (e.g., the 'done' action)
+      const isDone = typeof result.is_done === 'boolean' ? result.is_done : false;
+
       const actionResult: ActionResult = {
         success: true,
         action: actionName,
         parameters,
-        result,
+        result, // The actual result returned by the action's execute function
         timestamp,
-        duration
+        duration,
+        is_done: isDone // Include the completion flag
       };
 
-      this.actionHistory.push(actionResult);
-      console.log(`✅ Action "${actionName}" executed successfully in ${duration}ms.`);
+      this.actionHistory.push(actionResult); // Add successful result to history
+      logger.info(`✅ Action "${actionName}" executed successfully in ${duration}ms.`);
       
-      return actionResult;
+      return actionResult; // Return the successful result
 
     } catch (error: any) {
-      const duration = Date.now() - startTime;
+      const duration = Date.now() - startTime; // Calculate duration even on error
       const actionResult: ActionResult = {
         success: false,
         action: actionName,
         parameters,
-        error: error.message,
+        error: error.message, // Capture the error message
         timestamp,
         duration
       };
 
-      this.actionHistory.push(actionResult);
-      console.error(`❌ Action "${actionName}" failed: ${error.message}`);
+      this.actionHistory.push(actionResult); // Add failed result to history
+      logger.error(`❌ Action "${actionName}" failed: ${error.message}`);
       
-      return actionResult;
+      return actionResult; // Return the failed result
     }
   }
 
+  /**
+   * Retrieves a list of all available action definitions.
+   * @returns An array of `ActionDefinition` objects.
+   */
   getAvailableActions(): ActionDefinition[] {
     return this.registry.getAll();
   }
 
+  /**
+   * Retrieves the schema of all registered actions, suitable for documentation
+   * or for LLMs to understand available tools.
+   * @returns An array of objects describing each action's name, description, and parameters.
+   */
   getActionsSchema() {
     return this.registry.getActionsSchema();
   }
 
+  /**
+   * Public method to expose ActionRegistry's getPromptDescription.
+   * Generates a human-readable description of available actions for LLM context.
+   * @param page Optional Playwright `Page` object to potentially filter actions.
+   * @returns A string describing the available actions.
+   */
+  public getPromptDescription(page?: Page): string {
+    return this.registry.getPromptDescription(page);
+  }
+
+  /**
+   * Public method to expose ActionRegistry's createActionModel.
+   * Creates a factory (constructor) for `ActionModel` instances.
+   * @param options Optional settings for creating the action model.
+   * @returns A constructor function for the `ActionModel` class.
+   */
+  public createActionModel(options?: { includeActions?: string[]; page?: Page }): typeof ActionModel {
+    return this.registry.createActionModel(options);
+  }
+
+  /**
+   * Finds action names that accept a specific parameter or set of parameters.
+   * This can be used for dynamic action discovery.
+   * @param queryParams An object where keys are parameter names and values are their types or specific values.
+   * @returns An array of action names that match the query.
+   */
   findActionsByParameter(queryParams: Record<string, string | { type: string; value?: any }>): string[] {
     return this.registry.findActionByParameter(queryParams);
   }
 
+  /**
+   * Registers a custom action with the ActionRegistry.
+   * @param action The `ActionDefinition` object for the custom action.
+   * @param overwrite If true, allows overwriting an existing action with the same name (default: false).
+   */
   registerCustomAction(action: ActionDefinition, overwrite = false): void {
     this.registry.register(action, overwrite);
-    console.log(`Custom action "${action.name}" registered.`);
+    logger.info(`Custom action "${action.name}" registered.`);
   }
 
+  /**
+   * Removes a custom action from the ActionRegistry.
+   * @param actionName The name of the action to remove.
+   * @returns True if the action was removed, false if it was not found.
+   */
   removeCustomAction(actionName: string): boolean {
     const removed = this.registry.remove(actionName);
     if (removed) {
-      console.log(`Custom action "${actionName}" removed.`);
+      logger.info(`Custom action "${actionName}" removed.`);
     }
     return removed;
   }
 
+  /**
+   * Retrieves the history of executed actions.
+   * Returns a shallow copy to prevent external modification of the internal history array.
+   * @returns An array of `ActionResult` objects.
+   */
   getActionHistory(): ActionResult[] {
     return [...this.actionHistory];
   }
 
+  /**
+   * Clears the entire action history.
+   */
   clearActionHistory(): void {
     this.actionHistory = [];
-    console.log('Action history cleared.');
+    logger.info('Action history cleared.');
   }
 }

@@ -1,74 +1,91 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const CopyWebpackPlugin = require('copy-webpack-plugin');
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
-
-const commonConfig = {
-  mode: isDevelopment ? 'development' : 'production',
-  devtool: isDevelopment ? 'source-map' : false,
-  resolve: {
-    extensions: ['.ts', '.js', '.json']
-  },
-  module: {
-    rules: [
-      {
-        test: /\.ts$/,
-        exclude: /node_modules/,
-        use: 'ts-loader'
-      }
-    ]
-  }
-};
-
-const mainConfig = {
-  ...commonConfig,
-  target: 'electron-main',
-  entry: './src/main/main.ts',
-  output: {
-    path: path.resolve(__dirname, 'dist/main'),
-    filename: 'main.js'
-  }
-};
-
-const preloadConfig = {
-  ...commonConfig,
-  target: 'electron-preload',
-  entry: './src/preload/preload.ts',
-  output: {
-    path: path.resolve(__dirname, 'dist/preload'),
-    filename: 'preload.js'
-  }
-};
-
-const rendererConfig = {
-  ...commonConfig,
-  target: 'electron-renderer',
-  entry: './src/renderer/renderer.ts',
-  output: {
-    path: path.resolve(__dirname, 'dist/renderer'),
-    filename: 'renderer.js'
-  },
-  module: {
-    rules: [
-      ...commonConfig.module.rules,
-      {
-        test: /\.css$/,
-        use: ['style-loader', 'css-loader', 'postcss-loader']
-      }
-    ]
-  },
-  plugins: [
-    new HtmlWebpackPlugin({
-      template: './src/renderer/index.html',
-      filename: 'index.html'
-    }),
-    new CopyWebpackPlugin({
-      patterns: [
-        { from: 'assets', to: 'assets' }
+module.exports = [
+  // Main process configuration
+  {
+    mode: 'development',
+    entry: './src/main/main.ts',
+    target: 'electron-main',
+    output: {
+      path: path.resolve(__dirname, 'dist'),
+      filename: 'main.js'
+    },
+    resolve: {
+      extensions: ['.ts', '.js']
+    },
+    module: {
+      rules: [
+        {
+          test: /\.ts$/,
+          use: 'ts-loader',
+          exclude: /node_modules/
+        }
       ]
-    })
-  ]
-};
-
-module.exports = [mainConfig, preloadConfig, rendererConfig];
+    },
+    externals: {
+      electron: 'commonjs2 electron'
+    }
+  },
+  
+  // Preload process configuration
+  {
+    mode: 'development',
+    entry: './src/preload/preload.ts',
+    target: 'electron-preload',
+    output: {
+      path: path.resolve(__dirname, 'dist'),
+      filename: 'preload.js'
+    },
+    resolve: {
+      extensions: ['.ts', '.js']
+    },
+    module: {
+      rules: [
+        {
+          test: /\.ts$/,
+          use: 'ts-loader',
+          exclude: /node_modules/
+        }
+      ]
+    },
+    externals: {
+      electron: 'commonjs2 electron'
+    }
+  },
+  
+  // Renderer process configuration (React)
+  {
+    mode: 'development',
+    entry: './src/renderer/index.tsx',
+    target: 'electron-renderer',
+    output: {
+      path: path.resolve(__dirname, 'dist/renderer'),
+      filename: 'renderer.js',
+      globalObject: 'self'
+    },
+    resolve: {
+      extensions: ['.tsx', '.ts', '.js', '.jsx', '.css']
+    },
+    module: {
+      rules: [
+        {
+          test: /\.tsx?$/,
+          use: 'ts-loader',
+          exclude: /node_modules/
+        },
+        {
+          test: /\.css$/,
+          use: ['style-loader', 'css-loader', 'postcss-loader']
+        }
+      ]
+    },
+    plugins: [
+      new HtmlWebpackPlugin({
+        template: './src/renderer/index.html',
+        filename: 'index.html'
+      })
+    ],
+    devtool: 'source-map'
+  }
+];

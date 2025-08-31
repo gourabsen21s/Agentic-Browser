@@ -1,286 +1,103 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, Menu, shell } from 'electron';
 import * as path from 'path';
-import * as isDev from 'electron-is-dev';
+import { setupIPC } from './ipc-handlers';
+import { BrowserViewManager } from './browser-views';
+import { createApplicationMenu } from './menu';
 
-
+// Keep a global reference of the window object
 let mainWindow: BrowserWindow | null = null;
 
-function createWindow():void {
-    mainWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        minWidth: 800,
-        minHeight: 600,
-        webPreferences:{
-            contextIsolation: true,
-            nodeIntegration: false,
-            webviewTag: true,
-            webSecurity: true,
-            allowRunningInsecureContent: false,
-            experimentalFeatures: false,
-            preload: path.join(__dirname, '../preload/preload.js'),
-            sandbox: false,
-            spellcheck: true
-        },
-        show: false,
-        backgroundColor: '#f8fafc',
-        vibrancy: 'under-window',
-        visualEffectState: 'active'
-    })
+/**
+ * Create the main browser window with security-first configuration
+ */
+export function createWindow(): BrowserWindow {
+  // Create the browser window with modern security settings
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      // Security settings
+      contextIsolation: true,           // Isolate context for security
+      nodeIntegration: false,           // Disable Node.js in renderer
+      webSecurity: true,                // Enable web security
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
 
-    if(isDev){
-        mainWindow.loadURL("http://localhost:8080");
-        mainWindow.webContents.openDevTools();
-    }else{
-        mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-    }
-
-    mainWindow.once('ready-to-show',()=>{
-        if(mainWindow){
-            mainWindow.show();
-        }
-        if(isDev){
-            mainWindow?.focus();
-        }
-    });
-
-    mainWindow.on('closed',()=>{
-        mainWindow= null;
-    });
-
-    mainWindow.webContents.setWindowOpenHandler(({url})=>{
-        shell.openExternal(url);
-        return { action: 'deny' };
-    });
-
-    mainWindow.webContents.on('will-navigate',(event, navigationURL)=>{
-        const parsedURL = new URL(navigationURL);
-        if(parsedURL.origin !== 'http://localhost:8080' && !isDev ){
-            event.preventDefault();
-        }
-    });
-
-};
-
-function setupIPC(): void {
-
-  ipcMain.handle('browser:navigate', async (event, url: string) => {
-    return { success: true, url };
+      // Preload script for secure IPC (built to dist/preload.js)
+      preload: path.join(__dirname, 'preload.js'),
+      
+      // Additional security
+      sandbox: true,
+      spellcheck: true
+    },
+    
+    // Window appearance
+    show: false, // Don't show until ready-to-show
+    backgroundColor: '#f8fafc',
+    
+    // macOS specific
+    vibrancy: 'under-window',
+    visualEffectState: 'active'
   });
 
-  ipcMain.handle('browser:back', async (event) => {
-    return { success: true };
-  });
+  // Always load from built files (dist/renderer/index.html)
+  const isDev = false;
+  mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
 
-  ipcMain.handle('browser:forward', async (event) => {
-    return { success: true };
-  });
-
-  ipcMain.handle('browser:reload', async (event) => {
-    return { success: true };
-  });
-
-
-  ipcMain.handle('tab:create', async (event, url?: string) => {
-    return { success: true, tabId: Date.now().toString() };
-  });
-
-  ipcMain.handle('tab:close', async (event, tabId: string) => {
-    return { success: true };
-  });
-
-  ipcMain.handle('tab:switch', async (event, tabId: string) => {
-    return { success: true };
-  });
-
-
-  ipcMain.handle('settings:get', async (event, key: string) => {
-
-    return { success: true, value: null };
-  });
-
-  ipcMain.handle('settings:set', async (event, key: string, value: any) => {
-
-    return { success: true };
-  });
-
-
-  ipcMain.handle('bookmarks:get', async (event) => {
-    return { success: true, bookmarks: [] };
-  });
-
-  ipcMain.handle('bookmarks:add', async (event, bookmark: { title: string; url: string }) => {
-    return { success: true };
-  });
-
-  ipcMain.handle('bookmarks:remove', async (event, url: string) => {
-    return { success: true };
-  });
-
-
-  ipcMain.handle('window:minimize', async (event) => {
+  // Show window when ready to prevent visual flash
+  mainWindow.once('ready-to-show', () => {
     if (mainWindow) {
-      mainWindow.minimize();
-    }
-    return { success: true };
-  });
-
-  ipcMain.handle('window:maximize', async (event) => {
-    if (mainWindow) {
-      if (mainWindow.isMaximized()) {
-        mainWindow.unmaximize();
-      } else {
-        mainWindow.maximize();
+      mainWindow.show();
+      
+      // Focus window on creation
+      if (isDev) {
+        mainWindow.focus();
       }
     }
-    return { success: true };
   });
 
-  ipcMain.handle('window:close', async (event) => {
-    if (mainWindow) {
-      mainWindow.close();
-    }
-    return { success: true };
+  // Handle window closed
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
-};
 
-function createMenu(): void {
-  const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'New Tab',
-          accelerator: 'CmdOrCtrl+T',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:new-tab');
-            }
-          }
-        },
-        {
-          label: 'Close Tab',
-          accelerator: 'CmdOrCtrl+W',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:close-tab');
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Quit',
-          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
-          click: () => {
-            app.quit();
-          }
-        }
-      ]
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' }
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' }
-      ]
-    },
-    {
-      label: 'Navigate',
-      submenu: [
-        {
-          label: 'Back',
-          accelerator: 'CmdOrCtrl+Left',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:back');
-            }
-          }
-        },
-        {
-          label: 'Forward',
-          accelerator: 'CmdOrCtrl+Right',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:forward');
-            }
-          }
-        },
-        {
-          label: 'Reload',
-          accelerator: 'CmdOrCtrl+R',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('menu:reload');
-            }
-          }
-        }
-      ]
-    },
-    {
-      label: 'Window',
-      submenu: [
-        { role: 'minimize' },
-        { role: 'close' }
-      ]
+  // Security: Prevent new window creation
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Open external links in default browser
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Security: Prevent navigation away from the app shell
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    const parsedUrl = new URL(navigationUrl);
+    // Only allow file:// renderer for the app shell
+    if (parsedUrl.protocol !== 'file:') {
+      event.preventDefault();
     }
-  ];
-
-  if (process.platform === 'darwin') {
-    template.unshift({
-      label: app.getName(),
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    });
-
-    (template[4].submenu as Electron.MenuItemConstructorOptions[]).push(
-      { type: 'separator' },
-      { role: 'front' },
-      { type: 'separator' },
-      { role: 'window' }
-    );
-  }
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
+  });
+  return mainWindow;
 }
 
+/**
+ * App event handlers
+ */
 app.whenReady().then(() => {
+  // Create the main window
+  const win = createWindow();
 
-  createWindow();
+  // Instantiate BrowserView manager and wire IPC
+  const viewManager = new BrowserViewManager(win);
+  setupIPC(viewManager);
 
-  setupIPC();
+  // Create application menu
+  const menu = createApplicationMenu();
+  Menu.setApplicationMenu(menu);
 
-  createMenu();
-  
-
+  // macOS: Re-create window when dock icon is clicked
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -288,61 +105,48 @@ app.whenReady().then(() => {
   });
 });
 
-
+// Quit when all windows are closed
 app.on('window-all-closed', () => {
-
+  // On macOS, keep app running even when all windows are closed
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-
+// Security: Prevent new window creation from renderer
 app.on('web-contents-created', (event, contents) => {
+  // Only constrain navigation for the main window, not BrowserViews
+  if (contents.getType && contents.getType() === 'window') {
+    contents.on('will-navigate', (event, navigationUrl) => {
+      const parsedUrl = new URL(navigationUrl);
+      const isDev = !app.isPackaged;
+      const devUrl = 'http://localhost:8060';
+      // In dev, allow navigation to dev server origin; block others
+      if (isDev && parsedUrl.origin !== devUrl) {
+        event.preventDefault();
+      }
+    });
+  }
 
-  contents.on('will-navigate', (event, navigationUrl) => {
-    const parsedUrl = new URL(navigationUrl);
-    
-    if (parsedUrl.origin !== 'http://localhost:8080' && isDev) {
-      event.preventDefault();
-    }
-  });
-
-
+  // Prevent new window creation everywhere
   contents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
 });
 
-
+// Handle certificate errors
 app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  const isDev = process.env.NODE_ENV === 'development';
+  
   if (isDev) {
-
+    // In development, ignore certificate errors for localhost
     event.preventDefault();
     callback(true);
   } else {
-
+    // In production, use default behavior
     callback(false);
   }
 });
 
-
-app.on('web-contents-created', (event, contents) => {
-  contents.on('new-window', (event, navigationUrl) => {
-
-    event.preventDefault();
-    shell.openExternal(navigationUrl);
-  });
-});
-
-
-if (isDev) {
-  try {
-    require('electron-reloader')(module, {
-      debug: true,
-      watchRenderer: true
-    });
-  } catch (error) {
-    console.log('Error loading electron-reloader:', error);
-  }
-}
+// Live reload is disabled to avoid bundling optional native deps.

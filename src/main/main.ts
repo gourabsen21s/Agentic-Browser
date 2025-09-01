@@ -6,6 +6,7 @@ import { createApplicationMenu } from './menu';
 
 // Keep a global reference of the window object
 let mainWindow: BrowserWindow | null = null;
+let browserViewManager: BrowserViewManager | null = null;
 
 /**
  * Create the main browser window with security-first configuration
@@ -59,9 +60,19 @@ export function createWindow(): BrowserWindow {
     }
   });
 
+  // Fix EventEmitter memory leak by increasing max listeners
+  mainWindow.setMaxListeners(20);
+
   // Handle window closed
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Handle window resize to update BrowserView bounds
+  mainWindow.on('resize', () => {
+    if (browserViewManager) {
+      browserViewManager.handleWindowResize();
+    }
   });
 
   // Security: Prevent new window creation
@@ -89,9 +100,11 @@ app.whenReady().then(() => {
   // Create the main window
   const win = createWindow();
 
-  // Instantiate BrowserView manager and wire IPC
-  const viewManager = new BrowserViewManager(win);
-  setupIPC(viewManager);
+  // Initialize browser view manager
+  if (win) {
+    browserViewManager = new BrowserViewManager(win);
+    setupIPC(browserViewManager);
+  }
 
   // Create application menu
   const menu = createApplicationMenu();

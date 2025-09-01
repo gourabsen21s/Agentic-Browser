@@ -9,186 +9,148 @@ interface SidebarProps {
   onShortcutClick: (url: string) => void;
 }
 
-const panelWidth = 80;
+const SIDEBAR_WIDTH = 70;
 
 const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick }) => {
-  const [isVisible, setIsVisible] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
-  const hoverZoneRef = useRef<HTMLDivElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Inform main process about sidebar width on mount
   useEffect(() => {
-    const handleMouseEnter = () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      setIsVisible(true);
-    };
-
-    const handleMouseLeave = () => {
-      timeoutRef.current = setTimeout(() => {
-        setIsVisible(false);
-        setHoveredItem(null);
-      }, 200);
-    };
-
-    const zone = hoverZoneRef.current;
-    const panel = panelRef.current;
-
-    zone?.addEventListener('mouseenter', handleMouseEnter);
-    panel?.addEventListener('mouseenter', handleMouseEnter);
-    zone?.addEventListener('mouseleave', handleMouseLeave);
-    panel?.addEventListener('mouseleave', handleMouseLeave);
-
-    return () => {
-      zone?.removeEventListener('mouseenter', handleMouseEnter);
-      panel?.removeEventListener('mouseenter', handleMouseEnter);
-      zone?.removeEventListener('mouseleave', handleMouseLeave);
-      panel?.removeEventListener('mouseleave', handleMouseLeave);
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+    const setSidebarWidth = async () => {
+      try {
+        await window.electronAPI?.setSidebarWidth?.(SIDEBAR_WIDTH);
+      } catch (error) {
+        console.error('Failed to set sidebar width:', error);
       }
     };
+    setSidebarWidth();
   }, []);
 
-  const sidebarVariants = {
-    hidden: {
-      x: -100,
-      opacity: 0,
-      scale: 0.95,
-    },
-    visible: {
-      x: 0,
-      opacity: 1,
-      scale: 1,
-      transition: {
-        type: 'spring' as const,
-        stiffness: 400,
-        damping: 30,
-        mass: 0.8,
-        staggerChildren: 0.05,
-        delayChildren: 0.1,
-      },
-    },
-    exit: {
-      x: -100,
-      opacity: 0,
-      scale: 0.95,
-      transition: {
-        duration: 0.2,
-        ease: 'easeInOut' as const,
-      },
-    },
-  };
 
-  const itemVariants = {
-    hidden: { x: -20, opacity: 0 },
-    visible: {
-      x: 0,
-      opacity: 1,
-      transition: {
-        type: 'spring' as const,
-        stiffness: 500,
-        damping: 25,
-      },
-    },
-  };
 
   return (
-    <>
-      {/* Invisible hover trigger zone */}
-      <Box
-        ref={hoverZoneRef}
+    <motion.div
+      initial={{ x: -SIDEBAR_WIDTH, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      transition={{ 
+        type: 'spring',
+        stiffness: 300,
+        damping: 30,
+        staggerChildren: 0.1
+      }}
+      style={{
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: SIDEBAR_WIDTH,
+        zIndex: 1000,
+        pointerEvents: 'auto',
+      }}
+    >
+      <Paper
+        elevation={0}
         sx={{
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          width: 20,
-          height: '100vh',
-          zIndex: 1300,
-          pointerEvents: 'auto',
+          width: '100%',
+          height: '100%',
+          background: 'linear-gradient(180deg, rgba(10,10,10,0.98) 0%, rgba(15,15,15,0.95) 50%, rgba(8,8,8,0.98) 100%)',
+          backdropFilter: 'blur(20px) saturate(180%)',
+          borderRight: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          py: 2,
+          gap: 1,
+          overflow: 'hidden',
+          position: 'relative',
+          boxShadow: '4px 0 20px rgba(0,0,0,0.3), inset -1px 0 0 rgba(255,255,255,0.05)',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '1px',
+            height: '100%',
+            background: 'linear-gradient(180deg, transparent, rgba(59,130,246,0.3), transparent)',
+          },
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'radial-gradient(circle at 50% 0%, rgba(59,130,246,0.05) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          },
         }}
-      />
-
-      {/* Floating sidebar panel */}
-      <AnimatePresence mode="wait">
-        {isVisible && (
-          <motion.div
-            ref={panelRef}
-            variants={sidebarVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            style={{
-              position: 'fixed',
-              left: 12,
-              top: 12,
-              bottom: 12,
-              zIndex: 1400,
-              pointerEvents: 'auto',
-            }}
-          >
-            <Paper
-              elevation={24}
+      >
+        {/* Profile Avatar */}
+        <motion.div
+          initial={{ y: -20, opacity: 0, scale: 0.8 }}
+          animate={{ y: 0, opacity: 1, scale: 1 }}
+          transition={{ delay: 0.1, duration: 0.4, type: 'spring', stiffness: 300 }}
+          whileHover={{ 
+            scale: 1.1, 
+            y: -2,
+            transition: { duration: 0.2 }
+          }}
+        >
+          <Tooltip title="Profile" placement="right" arrow>
+            <IconButton
+              onMouseEnter={() => setHoveredItem('profile')}
+              onMouseLeave={() => setHoveredItem(null)}
               sx={{
-                width: panelWidth,
-                height: '100%',
-                background: 'linear-gradient(145deg, rgba(15,15,15,0.95), rgba(25,25,25,0.95))',
-                backdropFilter: 'blur(20px) saturate(180%)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 3,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                py: 2,
-                gap: 1.5,
-                overflow: 'hidden',
+                width: 40,
+                height: 40,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
                 position: 'relative',
+                overflow: 'hidden',
+                borderRadius: 3,
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: hoveredItem === 'profile' 
+                  ? '0 8px 25px rgba(102, 126, 234, 0.4), 0 0 20px rgba(102, 126, 234, 0.3), inset 0 1px 0 rgba(255,255,255,0.3)' 
+                  : '0 4px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)',
+                },
                 '&::before': {
                   content: '""',
                   position: 'absolute',
                   top: 0,
-                  left: 0,
-                  right: 0,
-                  height: '1px',
-                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+                  left: '-100%',
+                  width: '100%',
+                  height: '100%',
+                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
+                  transition: 'left 0.6s ease',
+                },
+                '&:hover::before': {
+                  left: '100%',
                 },
               }}
             >
-              {/* Profile Avatar */}
-              <motion.div variants={itemVariants}>
-                <Tooltip title="Profile" placement="right" arrow>
-                  <IconButton
-                    onMouseEnter={() => setHoveredItem('profile')}
-                    onMouseLeave={() => setHoveredItem(null)}
-                    sx={{
-                      width: 44,
-                      height: 44,
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      color: 'white',
-                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                      transform: hoveredItem === 'profile' ? 'scale(1.1) translateY(-2px)' : 'scale(1)',
-                      boxShadow: hoveredItem === 'profile' 
-                        ? '0 8px 25px rgba(102, 126, 234, 0.4)' 
-                        : '0 4px 12px rgba(0,0,0,0.3)',
-                      '&:hover': {
-                        background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)',
-                      },
-                    }}
-                  >
-                    <UserIcon width={20} height={20} />
-                  </IconButton>
-                </Tooltip>
-              </motion.div>
+              <UserIcon width={18} height={18} />
+            </IconButton>
+          </Tooltip>
+        </motion.div>
 
-              <motion.div variants={itemVariants}>
+              <motion.div
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2, duration: 0.3 }}
+              >
                 <Divider sx={{ width: 40, borderColor: 'rgba(255,255,255,0.1)' }} />
               </motion.div>
 
               {/* Navigation Items */}
-              <motion.div variants={itemVariants}>
+              <motion.div
+                initial={{ y: -20, opacity: 0, scale: 0.9 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                transition={{ delay: 0.3, duration: 0.4, type: 'spring' }}
+                whileHover={{ scale: 1.05 }}
+              >
                 <Tooltip title="Home" placement="right" arrow>
                   <IconButton
                     onClick={() => onShortcutClick('https://google.com')}
@@ -215,7 +177,12 @@ const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick }) => {
                 </Tooltip>
               </motion.div>
 
-              <motion.div variants={itemVariants}>
+              <motion.div
+                initial={{ y: -20, opacity: 0, scale: 0.9 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                transition={{ delay: 0.4, duration: 0.4, type: 'spring' }}
+                whileHover={{ scale: 1.05 }}
+              >
                 <Tooltip title="Bookmarks" placement="right" arrow>
                   <IconButton
                     onMouseEnter={() => setHoveredItem('bookmarks')}
@@ -243,7 +210,12 @@ const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick }) => {
 
               {/* Dynamic Shortcuts */}
               {shortcuts.slice(0, 4).map((shortcut, index) => (
-                <motion.div key={shortcut.id} variants={itemVariants}>
+                <motion.div 
+                  key={shortcut.id}
+                  initial={{ y: -20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.5 + index * 0.1, duration: 0.3 }}
+                >
                   <Tooltip title={shortcut.name} placement="right" arrow>
                     <IconButton
                       onClick={() => onShortcutClick(shortcut.url)}
@@ -295,7 +267,11 @@ const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick }) => {
               <Box sx={{ flex: 1 }} />
 
               {/* Settings */}
-              <motion.div variants={itemVariants}>
+              <motion.div
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.8, duration: 0.3 }}
+              >
                 <Tooltip title="Settings" placement="right" arrow>
                   <IconButton
                     onMouseEnter={() => setHoveredItem('settings')}
@@ -322,7 +298,17 @@ const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick }) => {
               </motion.div>
 
               {/* Add Button */}
-              <motion.div variants={itemVariants}>
+              <motion.div
+                initial={{ y: -20, opacity: 0, scale: 0.8, rotate: -180 }}
+                animate={{ y: 0, opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ delay: 0.9, duration: 0.5, type: 'spring', stiffness: 200 }}
+                whileHover={{ 
+                  scale: 1.15, 
+                  rotate: 90,
+                  y: -3,
+                  transition: { duration: 0.2 }
+                }}
+              >
                 <Tooltip title="Add Shortcut" placement="right" arrow>
                   <IconButton
                     onMouseEnter={() => setHoveredItem('add')}
@@ -347,11 +333,8 @@ const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick }) => {
                   </IconButton>
                 </Tooltip>
               </motion.div>
-            </Paper>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+      </Paper>
+    </motion.div>
   );
 };
 

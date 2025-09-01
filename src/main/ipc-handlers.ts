@@ -114,7 +114,9 @@ export function setupIPC(viewManager: BrowserViewManager): void {
   });
 
   ipcMain.handle('tab:switch', async (event, tabId: string) => {
+    console.log('[DEBUG] IPC handler tab:switch received tabId:', tabId);
     const ok = await viewManager.switchTab(tabId);
+    console.log('[DEBUG] IPC handler tab:switch result:', ok);
     return { success: ok, tabId };
   });
 
@@ -292,6 +294,17 @@ export function setupIPC(viewManager: BrowserViewManager): void {
     }
   });
 
+  // Layout: allow renderer to inform sidebar width for BrowserView layout
+  ipcMain.handle('window:set-sidebar-width', async (event, width: number) => {
+    try {
+      viewManager.setSidebarWidth(width || 0);
+      return { success: true };
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error occurred';
+      return { success: false, error: errorMessage };
+    }
+  });
+
 
   // History management (future enhancement)
   ipcMain.handle('history:get', async (event, limit = 50) => {
@@ -319,8 +332,16 @@ export function setupIPC(viewManager: BrowserViewManager): void {
   ipcMain.handle('devtools:toggle', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (window) {
-      window.webContents.toggleDevTools();
-      return { success: true };
+      // Get the active BrowserView and toggle its DevTools
+      const browserView = window.getBrowserView();
+      if (browserView) {
+        browserView.webContents.toggleDevTools();
+        return { success: true };
+      } else {
+        // Fallback to main window DevTools if no BrowserView
+        window.webContents.toggleDevTools();
+        return { success: true };
+      }
     }
     return { success: false, error: 'Window not found' };
   });

@@ -120,7 +120,14 @@ export function createApplicationMenu(): Menu {
           accelerator: process.platform === 'darwin' ? 'Alt+Cmd+I' : 'Ctrl+Shift+I',
           click: (menuItem, browserWindow) => {
             if (browserWindow && browserWindow instanceof BrowserWindow) {
-              browserWindow.webContents.toggleDevTools();
+              // Get the active BrowserView and toggle its DevTools
+              const browserView = browserWindow.getBrowserView();
+              if (browserView) {
+                browserView.webContents.toggleDevTools();
+              } else {
+                // Fallback to main window DevTools if no BrowserView
+                browserWindow.webContents.toggleDevTools();
+              }
             }
           }
         },

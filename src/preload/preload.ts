@@ -29,6 +29,7 @@ interface ElectronAPI {
 
   // Layout helpers
   setChromeHeight: (height: number) => Promise<{ success: boolean }>;
+  setSidebarWidth: (width: number) => Promise<{ success: boolean }>;
 
   // Menu events (from main to renderer)
   onMenuEvent: (callback: (event: string) => void) => void;
@@ -37,6 +38,8 @@ interface ElectronAPI {
   // Tab metadata events (from main to renderer)
   onTabUpdated: (callback: (payload: { tabId: string; title?: string; url?: string; favicon?: string | null; isLoading?: boolean }) => void) => void;
   removeTabUpdatedListeners: () => void;
+  onTabSwitched: (callback: (payload: { tabId: string }) => void) => void;
+  removeTabSwitchedListeners: () => void;
 }
 
 // Create the secure API object
@@ -69,6 +72,7 @@ const electronAPI: ElectronAPI = {
 
   // Layout helpers
   setChromeHeight: (height: number) => ipcRenderer.invoke('layout:set-chrome-height', height),
+  setSidebarWidth: (width: number) => ipcRenderer.invoke('window:set-sidebar-width', width),
 
   // Menu event handling
   onMenuEvent: (callback: (event: string) => void) => {
@@ -87,17 +91,25 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.removeAllListeners('menu:back');
     ipcRenderer.removeAllListeners('menu:forward');
     ipcRenderer.removeAllListeners('menu:reload');
-  }
-  ,
+  },
 
   // Tab metadata event handling
-  onTabUpdated: (callback: (payload: { tabId: string; title?: string; url?: string; favicon?: string | null; isLoading?: boolean }) => void) => {
-    const handler = (_event: any, payload: any) => callback(payload);
-    ipcRenderer.on('tab:updated', handler);
+  onTabUpdated: (callback: (payload: any) => void) => {
+    ipcRenderer.on('tab:updated', (_, payload) => callback(payload));
   },
+  
   removeTabUpdatedListeners: () => {
     ipcRenderer.removeAllListeners('tab:updated');
-  }
+  },
+
+  // Event listeners for tab switching
+  onTabSwitched: (callback: (payload: { tabId: string }) => void) => {
+    ipcRenderer.on('tab:switched', (_, payload) => callback(payload));
+  },
+  
+  removeTabSwitchedListeners: () => {
+    ipcRenderer.removeAllListeners('tab:switched');
+  },
 };
 
 // Expose the API to the renderer process

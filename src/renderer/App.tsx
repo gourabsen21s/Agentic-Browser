@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline, Box, GlobalStyles } from '@mui/material';
 import { motion } from 'framer-motion';
 import Sidebar from './components/Sidebar';
 import TabBar from './components/TabBar';
 import NavigationBar from './components/NavigationBar';
-import WebviewContainer from './components/WebviewContainer';
-import { Tab, AppShortcut } from './types';
+import Homepage from './components/Homepage';
+// WebviewContainer removed - BrowserView handles rendering directly
+import { AppShortcut } from './types';
+import { useBrowserState } from './hooks/useBrowserState';
 
 const darkTheme = createTheme({
   palette: {
@@ -93,10 +95,10 @@ const darkTheme = createTheme({
 });
 
 const App: React.FC = () => {
-  const [tabs, setTabs] = useState<Tab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const tabCounter = useRef(0);
+  const [browserState, browserActions] = useBrowserState();
+  const { tabs, activeTabId } = browserState;
+  const { createTab, closeTab, switchTab, navigateToUrl } = browserActions;
+  
   const chromeRef = useRef<HTMLDivElement | null>(null);
   const lastChromeHeight = useRef<number>(0);
 
@@ -107,34 +109,16 @@ const App: React.FC = () => {
       const chromeHeight = el.offsetHeight; // only tab/nav height counts toward top chrome
       if (chromeHeight !== lastChromeHeight.current) {
         lastChromeHeight.current = chromeHeight;
-        (window as any).electronAPI?.setChromeHeight?.(chromeHeight);
+        window.electronAPI?.setChromeHeight?.(chromeHeight);
       }
     } catch {}
   }, []);
 
   // No sidebar width reporting; layout is managed by top chrome height only.
 
-  // Create initial tab on mount and observe chrome height changes
+  // Observe chrome height changes
   useEffect(() => {
-    const init = async () => {
-      try {
-        const res = await (window as any).electronAPI?.createTab?.('https://www.google.com');
-        if (res?.success && res.tabId) {
-          const tabId = res.tabId as string;
-          const newTab: Tab = {
-            id: tabId,
-            title: 'New Tab',
-            url: res.url || 'https://www.google.com',
-            favicon: null,
-            isActive: true,
-            isLoading: false
-          };
-          setTabs([newTab]);
-          setActiveTabId(tabId);
-        }
-      } catch {}
-      reportChromeHeight();
-    };
+    reportChromeHeight();
 
     let raf = 0;
     const schedule = () => {
@@ -145,91 +129,26 @@ const App: React.FC = () => {
     const ro = new ResizeObserver(() => schedule());
     if (chromeRef.current) ro.observe(chromeRef.current);
 
-    init();
     return () => {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
     };
   }, [reportChromeHeight]);
 
-  // Listen for tab metadata updates from main (title, url, favicon, loading)
-  useEffect(() => {
-    const api = (window as any).electronAPI;
-    if (!api?.onTabUpdated) return;
-    const handler = (payload: { tabId: string; title?: string; url?: string; favicon?: string | null; isLoading?: boolean }) => {
-      const { tabId, ...rest } = payload;
-      updateTab(tabId, rest as Partial<Tab>);
-    };
-    api.onTabUpdated(handler);
-    return () => {
-      api.removeTabUpdatedListeners?.();
-    };
-  }, []);
 
-  const createTab = async (url: string = 'https://www.google.com') => {
-    const res = await (window as any).electronAPI?.createTab?.(url);
-    if (res?.success && res.tabId) {
-      const tabId: string = res.tabId;
-      const newTab: Tab = {
-        id: tabId,
-        title: 'New Tab',
-        url: res.url || url,
-        favicon: null,
-        isActive: false,
-        isLoading: false
-      };
-      setTabs(prevTabs => [...prevTabs, newTab]);
-      setActiveTabId(tabId);
-    }
-  };
 
-  const closeTab = async (tabId: string) => {
-    const res = await (window as any).electronAPI?.closeTab?.(tabId);
-    setTabs(prevTabs => prevTabs.filter(tab => tab.id !== tabId));
-    if (res?.success) {
-      const nextId = res.nextActiveId as string | null | undefined;
-      if (nextId) setActiveTabId(nextId);
-      else if (tabs.length <= 1) {
-        // No tabs left, create a fresh one
-        setActiveTabId(null);
-        setTimeout(() => { createTab(); }, 50);
-      }
-    }
-  };
 
-  const switchTab = async (tabId: string) => {
-    const res = await (window as any).electronAPI?.switchTab?.(tabId);
-    if (res?.success) setActiveTabId(tabId);
-  };
 
-  const updateTab = (tabId: string, updates: Partial<Tab>) => {
-    setTabs(prevTabs => 
-      prevTabs.map(tab => 
-        tab.id === tabId ? { ...tab, ...updates } : tab
-      )
-    );
-  };
 
-  const navigateToUrl = async (url: string) => {
-    if (!activeTabId) return;
-    
-    // Add protocol if missing
-    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('file://')) {
-      if (url.includes(' ') || (!url.includes('.') && !url.includes('localhost'))) {
-        url = `https://www.google.com/search?q=${encodeURIComponent(url)}`;
-      } else {
-        url = `https://${url}`;
-      }
-    }
-
-    await (window as any).electronAPI?.navigate?.(url);
-    updateTab(activeTabId, { url, isLoading: false });
-  };
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
   const handleNavigate = (url: string) => {
     navigateToUrl(url);
+  };
+
+  const handleShortcutClick = (url: string) => {
+    createTab(url);
   };
 
   const shortcuts: AppShortcut[] = [
@@ -270,10 +189,6 @@ const App: React.FC = () => {
     }
   ];
 
-  const handleShortcutClick = (url: string) => {
-    createTab(url);
-  };
-
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
@@ -307,7 +222,7 @@ const App: React.FC = () => {
           background: 'radial-gradient(ellipse at top, rgba(15,15,15,1) 0%, rgba(5,5,5,1) 100%)',
           position: 'relative'
         }}>
-          {/* Floating Sidebar */}
+          {/* Hover-based Sidebar */}
           <Sidebar shortcuts={shortcuts} onShortcutClick={handleShortcutClick} />
 
           {/* Main content area */}
@@ -319,7 +234,8 @@ const App: React.FC = () => {
               flexDirection: 'column', 
               minHeight: 0,
               position: 'relative',
-              zIndex: 1
+              zIndex: 1,
+              marginLeft: '70px' // Account for static sidebar width
             }}
           >
             <motion.div
@@ -338,20 +254,20 @@ const App: React.FC = () => {
               <NavigationBar 
                 activeTab={activeTab}
                 onNavigate={handleNavigate}
-                onBack={async () => { await (window as any).electronAPI?.goBack?.(); }}
-                onForward={async () => { await (window as any).electronAPI?.goForward?.(); }}
-                onReload={async () => { await (window as any).electronAPI?.reload?.(); }}
+                onBack={async () => { await window.electronAPI?.goBack?.(); }}
+                onForward={async () => { await window.electronAPI?.goForward?.(); }}
+                onReload={async () => { await window.electronAPI?.reload?.(); }}
               />
             </motion.div>
             
-            <motion.div
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4, delay: 0.2 }}
-              style={{ flex: 1, minHeight: 0 }}
-            >
-              <WebviewContainer />
-            </motion.div>
+            {/* Homepage when no tabs or BrowserView content */}
+            {tabs.length === 0 ? (
+              <Homepage 
+                onNavigate={handleNavigate}
+                onCreateTab={() => createTab()}
+              />
+            ) : null}
+            {/* BrowserView renders content directly when tabs exist */}
           </Box>
           
           {/* Background gradient overlay */}

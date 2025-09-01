@@ -52,15 +52,21 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
       color="transparent" 
       elevation={0} 
       sx={{ 
-        background: 'linear-gradient(135deg, rgba(15,15,15,0.98), rgba(25,25,25,0.95))',
-        backdropFilter: 'blur(20px) saturate(180%)',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(30, 30, 30, 0.95)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
         position: 'relative'
       }}
     >
       <Toolbar variant="dense" sx={{ gap: 1.5, py: 0.5 }}>
         {/* Navigation Controls */}
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.3, staggerChildren: 0.1 }}
+        >
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Tooltip title="Back" arrow>
             <motion.div
               whileHover={{ scale: 1.05 }}
@@ -145,7 +151,8 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
               </IconButton>
             </motion.div>
           </Tooltip>
-        </Box>
+          </Box>
+        </motion.div>
 
         {/* Address Bar */}
         <Box sx={{ flex: 1, maxWidth: 800, mx: 2 }}>
@@ -260,8 +267,13 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
                             color: 'white',
                             width: 28,
                             height: 28,
+                            borderRadius: 2,
+                            boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
+                            transition: 'all 0.2s ease',
                             '&:hover': {
-                              background: 'linear-gradient(135deg, #1d4ed8, #1e40af)'
+                              background: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
+                              boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255,255,255,0.3)',
+                              transform: 'translateY(-1px)'
                             }
                           }}
                         >

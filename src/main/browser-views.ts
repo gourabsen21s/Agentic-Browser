@@ -95,26 +95,9 @@ export class BrowserViewManager {
     let w = Math.max(0, width - this.sidebarWidth);
     let h = Math.max(0, height - this.topChromeHeight);
 
-    // Adjust bounds based on active overlays
-    if (this.activeOverlays.has('find')) {
-      // Find overlay appears in top-right, no bounds adjustment needed
-      // It uses high z-index in the renderer to appear above content
-    }
-    
-    if (this.activeOverlays.has('settings')) {
-      // Settings panel is fullscreen modal, hide BrowserView completely
-      return { x: 0, y: 0, width: 0, height: 0 };
-    }
-    
-    if (this.activeOverlays.has('extensions')) {
-      // Extensions panel appears on the right, reduce BrowserView width
-      w = Math.max(0, w - 400); // 400px width for extensions panel
-    }
-    
-    if (this.activeOverlays.has('chat')) {
-      // Chat interface appears on the right, reduce BrowserView width
-      w = Math.max(0, w - 400); // 400px width for chat interface
-    }
+    // Note: Overlay adjustments are now handled by IPC overlay:show/hide handlers
+    // This method provides the default bounds without overlay considerations
+    // The resizeViews() method will be called by IPC handlers when overlays change
 
     return { x, y, width: w, height: h };
   }
@@ -144,6 +127,9 @@ export class BrowserViewManager {
     wc.on('page-favicon-updated', (_e, favicons: string[]) => {
       const favicon = Array.isArray(favicons) && favicons.length ? favicons[0] : null;
       try { this.window.webContents.send('tab:updated', { tabId: id, favicon }); } catch {}
+    });
+    wc.on('found-in-page', (_e, result) => {
+      try { this.window.webContents.send('found-in-page', result); } catch {}
     });
     wc.on('did-navigate', (_e, newUrl) => {
       try { this.window.webContents.send('tab:updated', { tabId: id, url: newUrl }); } catch {}
@@ -313,21 +299,33 @@ export class BrowserViewManager {
     return this.tabs.get(this.activeTabId) || null;
   }
 
-  // Overlay management - properly handle BrowserView stacking
-  showOverlay(overlayType: string, options?: any): void {
-    console.log(`[BrowserViewManager] Showing overlay: ${overlayType}`);
-    this.activeOverlays.add(overlayType);
-    this.layoutActiveView(); // Re-layout BrowserView with new bounds
-  }
-
-  hideOverlay(overlayType: string): void {
-    console.log(`[BrowserViewManager] Hiding overlay: ${overlayType}`);
-    this.activeOverlays.delete(overlayType);
-    this.layoutActiveView(); // Re-layout BrowserView with restored bounds
-  }
-
   // Get list of active overlays (for debugging)
   getActiveOverlays(): string[] {
     return Array.from(this.activeOverlays);
+  }
+
+  // Get the main window reference
+  getMainWindow(): BrowserWindow {
+    return this.window;
+  }
+
+  // Resize BrowserViews with specific dimensions (for overlay management)
+  resizeViews(width: number, height: number): void {
+    console.log(`[BrowserViewManager] Resizing views to: ${width}x${height}`);
+    
+    if (!this.activeTabId) return;
+    const entry = this.tabs.get(this.activeTabId);
+    if (!entry) return;
+    
+    // Simple bounds calculation - don't overcomplicate
+    const bounds = {
+      x: this.sidebarWidth,
+      y: this.topChromeHeight,
+      width: Math.max(100, width), // Ensure minimum width but don't force large minimums
+      height: Math.max(100, height) // Ensure minimum height but don't force large minimums
+    };
+    
+    entry.view.setBounds(bounds);
+    console.log(`[BrowserViewManager] Set bounds:`, bounds);
   }
 }

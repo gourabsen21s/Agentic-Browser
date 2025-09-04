@@ -558,14 +558,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         style={{
-          position: 'fixed',
+          position: 'absolute',
           top: 0,
           left: 0,
           right: 0,
           bottom: 0,
           backgroundColor: 'rgba(0,0,0,0.8)',
           backdropFilter: 'blur(8px)',
-          zIndex: 1200, // Settings panel z-index
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

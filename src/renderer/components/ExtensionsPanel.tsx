@@ -1,48 +1,50 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Box,
-  Typography,
   Paper,
+  Typography,
   List,
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
   Switch,
   IconButton,
+  Box,
   Chip,
-  Alert,
-  CircularProgress,
+  Avatar,
   Button,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  TextField,
+  FormControlLabel,
+  Checkbox,
+  Divider,
+  Alert
 } from '@mui/material';
 import {
   Close as CloseIcon,
   Extension as ExtensionIcon,
+  GetApp as InstallIcon,
   Delete as DeleteIcon,
-  Info as InfoIcon
+  Settings as SettingsIcon,
+  Search as SearchIcon,
+  Star as StarIcon,
+  Shield as ShieldIcon
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
-
-declare global {
-  interface Window {
-    electron: {
-      ipcRenderer: {
-        invoke: (channel: string, ...args: any[]) => Promise<any>;
-      };
-    };
-  }
-}
 
 interface Extension {
   id: string;
   name: string;
+  description: string;
   version: string;
   enabled: boolean;
-  path: string;
-  manifest?: any;
+  icon?: string;
+  category: string;
+  rating?: number;
+  permissions?: string[];
+  installUrl?: string;
 }
 
 interface ExtensionsPanelProps {
@@ -51,341 +53,444 @@ interface ExtensionsPanelProps {
 
 const ExtensionsPanel: React.FC<ExtensionsPanelProps> = ({ onClose }) => {
   const [extensions, setExtensions] = useState<Extension[]>([]);
+  const [availableExtensions, setAvailableExtensions] = useState<Extension[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
   const [selectedExtension, setSelectedExtension] = useState<Extension | null>(null);
-  const [infoDialogOpen, setInfoDialogOpen] = useState(false);
+
+  const categories = [
+    { id: 'all', name: 'All Extensions', icon: ExtensionIcon },
+    { id: 'productivity', name: 'Productivity', icon: StarIcon },
+    { id: 'security', name: 'Security & Privacy', icon: ShieldIcon },
+    { id: 'developer', name: 'Developer Tools', icon: SettingsIcon },
+    { id: 'utilities', name: 'Utilities', icon: ExtensionIcon }
+  ];
 
   useEffect(() => {
     loadExtensions();
   }, []);
 
-  // Handle overlay management
-  useEffect(() => {
-    // Notify main process that extensions overlay is shown
-    window.electronAPI?.showOverlay?.('extensions').catch(console.error);
-    
-    // Cleanup on unmount
-    return () => {
-      window.electronAPI?.hideOverlay?.('extensions').catch(console.error);
-    };
-  }, []);
-
   const loadExtensions = async () => {
     try {
-      setLoading(true);
-      setError(null);
-      const result = await window.electron.ipcRenderer.invoke('extensions:list');
-      
-      if (result.success) {
-        setExtensions(result.extensions || []);
-      } else {
-        setError(result.error || 'Failed to load extensions');
-      }
-    } catch (err) {
-      setError('Failed to communicate with extension manager');
-      console.error('Extension loading error:', err);
-    } finally {
+      // Mock data for now - replace with actual extension API calls
+      const mockInstalled: Extension[] = [
+        {
+          id: 'ublock-origin',
+          name: 'uBlock Origin',
+          description: 'An efficient wide-spectrum content blocker.',
+          version: '1.44.4',
+          enabled: true,
+          category: 'security',
+          rating: 4.9,
+          permissions: ['activeTab', 'storage', 'webRequest']
+        },
+        {
+          id: 'react-devtools',
+          name: 'React Developer Tools',
+          description: 'Adds React debugging tools to Chrome DevTools.',
+          version: '4.24.6',
+          enabled: true,
+          category: 'developer',
+          rating: 4.7,
+          permissions: ['debugger', 'storage']
+        }
+      ];
+
+      const mockAvailable: Extension[] = [
+        {
+          id: 'privacy-badger',
+          name: 'Privacy Badger',
+          description: 'Automatically learns to block invisible trackers.',
+          version: '2023.1.17',
+          enabled: false,
+          category: 'security',
+          rating: 4.6,
+          permissions: ['activeTab', 'storage', 'webRequest'],
+          installUrl: 'https://chrome.google.com/webstore/detail/privacy-badger/pkehgijcmpdhfbdbbnkijodmdjhbjlgp'
+        },
+        {
+          id: 'lastpass',
+          name: 'LastPass',
+          description: 'Password manager that stores encrypted passwords online.',
+          version: '4.95.0',
+          enabled: false,
+          category: 'productivity',
+          rating: 4.4,
+          permissions: ['activeTab', 'storage', 'identity'],
+          installUrl: 'https://chrome.google.com/webstore/detail/lastpass-free-password-ma/hdokiejnpimakedhajhdlcegeplioahd'
+        }
+      ];
+
+      setExtensions(mockInstalled);
+      setAvailableExtensions(mockAvailable);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading extensions:', error);
       setLoading(false);
     }
   };
 
-  const toggleExtension = async (id: string, enabled: boolean) => {
+  const toggleExtension = async (extensionId: string, enabled: boolean) => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('extensions:toggle', id, enabled);
-      
-      if (result.success) {
+      // Update local state optimistically
+      setExtensions(prev => 
+        prev.map(ext => 
+          ext.id === extensionId ? { ...ext, enabled } : ext
+        )
+      );
+
+      // Here you would call the actual extension management API
+      console.log(`${enabled ? 'Enabling' : 'Disabling'} extension:`, extensionId);
+    } catch (error) {
+      console.error('Error toggling extension:', error);
+      // Revert optimistic update on error
         setExtensions(prev => 
           prev.map(ext => 
-            ext.id === id ? { ...ext, enabled } : ext
-          )
-        );
-      } else {
-        setError(result.error || 'Failed to toggle extension');
-      }
-    } catch (err) {
-      setError('Failed to toggle extension');
-      console.error('Extension toggle error:', err);
+          ext.id === extensionId ? { ...ext, enabled: !enabled } : ext
+        )
+      );
     }
   };
 
-  const removeExtension = async (id: string) => {
+  const installExtension = async (extension: Extension) => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('extensions:remove', id);
+      // Add to installed extensions
+      const newExtension = { ...extension, enabled: true };
+      setExtensions(prev => [...prev, newExtension]);
       
-      if (result.success) {
-        setExtensions(prev => prev.filter(ext => ext.id !== id));
-      } else {
-        setError(result.error || 'Failed to remove extension');
-      }
-    } catch (err) {
-      setError('Failed to remove extension');
-      console.error('Extension removal error:', err);
+      // Remove from available extensions
+      setAvailableExtensions(prev => prev.filter(ext => ext.id !== extension.id));
+      
+      setInstallDialogOpen(false);
+      setSelectedExtension(null);
+      
+      console.log('Installing extension:', extension.name);
+    } catch (error) {
+      console.error('Error installing extension:', error);
     }
   };
 
-  const showExtensionInfo = (extension: Extension) => {
-    setSelectedExtension(extension);
-    setInfoDialogOpen(true);
+  const uninstallExtension = async (extensionId: string) => {
+    try {
+      const extension = extensions.find(ext => ext.id === extensionId);
+      if (!extension) return;
+
+      // Remove from installed extensions
+      setExtensions(prev => prev.filter(ext => ext.id !== extensionId));
+      
+      // Add back to available extensions
+      setAvailableExtensions(prev => [...prev, { ...extension, enabled: false }]);
+      
+      console.log('Uninstalling extension:', extensionId);
+    } catch (error) {
+      console.error('Error uninstalling extension:', error);
+    }
   };
 
-  const getExtensionIcon = (name: string) => {
-    if (name.toLowerCase().includes('ublock') || name.toLowerCase().includes('adblock')) {
-      return '🛡️';
-    }
-    return '🧩';
-  };
+  const filteredExtensions = extensions.filter(ext => {
+    const matchesCategory = selectedCategory === 'all' || ext.category === selectedCategory;
+    const matchesSearch = ext.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         ext.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
+  const filteredAvailable = availableExtensions.filter(ext => {
+    const matchesCategory = selectedCategory === 'all' || ext.category === selectedCategory;
+    const matchesSearch = ext.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         ext.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   return (
-    <>
       <motion.div
-        initial={{ x: 400, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: 400, opacity: 0 }}
-        transition={{ 
-          type: 'spring',
-          stiffness: 300,
-          damping: 30,
-          duration: 0.3
-        }}
+      initial={{ opacity: 0, x: 400 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 400 }}
+      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         style={{
           position: 'fixed',
+        top: 0,
           right: 0,
-          top: 0,
-          bottom: 0,
-          width: 400,
-          zIndex: 1100,
+        width: '400px',
+        height: '100vh',
+        zIndex: 10001,
+        pointerEvents: 'auto'
         }}
       >
         <Paper 
-          elevation={3} 
+        elevation={8}
           sx={{
             width: '100%',
             height: '100%',
+          borderRadius: '20px 0 0 20px',
+          background: 'linear-gradient(135deg, rgba(15, 15, 15, 0.95) 0%, rgba(25, 25, 25, 0.95) 100%)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
             display: 'flex',
             flexDirection: 'column',
-            background: 'linear-gradient(180deg, rgba(15,15,15,0.98) 0%, rgba(20,20,20,0.95) 50%, rgba(10,10,10,0.98) 100%)',
-            backdropFilter: 'blur(20px) saturate(180%)',
-            borderLeft: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 0,
+          overflow: 'hidden'
           }}
       >
         {/* Header */}
-        <Box 
-          sx={{ 
-            p: 2, 
-            borderBottom: '1px solid', 
-            borderColor: 'divider',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            bgcolor: 'primary.main',
-            color: 'primary.contrastText'
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <ExtensionIcon />
-            <Typography variant="h6">Extensions</Typography>
-          </Box>
-          <IconButton onClick={onClose} size="small" sx={{ color: 'inherit' }}>
+        <Box sx={{ p: 3, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+              Extensions
+            </Typography>
+            <IconButton onClick={onClose} sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
             <CloseIcon />
           </IconButton>
         </Box>
 
-        {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto' }}>
-          {error && (
-            <Alert 
-              severity="error" 
-              sx={{ m: 2 }}
-              action={
-                <Button color="inherit" size="small" onClick={loadExtensions}>
-                  Retry
-                </Button>
+          {/* Search */}
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search extensions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ color: 'rgba(255, 255, 255, 0.5)', mr: 1 }} />,
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '10px',
+                color: 'white',
+                '&:hover': {
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                },
+                '&.Mui-focused': {
+                  borderColor: 'rgba(64, 196, 255, 0.5)',
+                }
               }
-            >
-              {error}
-            </Alert>
-          )}
+            }}
+          />
+        </Box>
 
+        {/* Categories */}
+        <Box sx={{ px: 3, py: 2, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {categories.map(category => (
+              <Chip
+                key={category.id}
+                label={category.name}
+                variant={selectedCategory === category.id ? 'filled' : 'outlined'}
+                size="small"
+                onClick={() => setSelectedCategory(category.id)}
+                sx={{
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                  color: selectedCategory === category.id ? 'black' : 'rgba(255, 255, 255, 0.8)',
+                  backgroundColor: selectedCategory === category.id ? 'rgba(64, 196, 255, 0.9)' : 'transparent',
+                  '&:hover': {
+                    backgroundColor: selectedCategory === category.id ? 'rgba(64, 196, 255, 1)' : 'rgba(255, 255, 255, 0.05)',
+                  }
+                }}
+              />
+            ))}
+          </Box>
+        </Box>
+
+        {/* Extensions List */}
+        <Box sx={{ flex: 1, overflow: 'auto' }}>
           {loading ? (
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              alignItems: 'center',
-              height: 200
-            }}>
-              <CircularProgress />
-            </Box>
-          ) : extensions.length === 0 ? (
-            <Box sx={{ 
-              p: 3, 
-              textAlign: 'center',
-              color: 'text.secondary'
-            }}>
-              <ExtensionIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-              <Typography variant="h6" gutterBottom>
-                No Extensions Installed
-              </Typography>
-              <Typography variant="body2">
-                Extensions will appear here once installed.
-                <br />
-                To install uBlock Origin, extract the extension to:
-                <br />
-                <code>extensions/ublock-origin/</code>
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                Loading extensions...
               </Typography>
             </Box>
           ) : (
-            <List sx={{ p: 0 }}>
-              {extensions.map((extension) => (
-                <ListItem 
-                  key={extension.id}
-                  sx={{ 
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    py: 2
-                  }}
-                >
-                  <Box sx={{ mr: 2, fontSize: '24px' }}>
-                    {getExtensionIcon(extension.name)}
-                  </Box>
-                  
+            <>
+              {/* Installed Extensions */}
+              {filteredExtensions.length > 0 && (
+                <>
+                  <Typography variant="subtitle2" sx={{ p: 2, color: 'rgba(255, 255, 255, 0.8)', fontWeight: 600 }}>
+                    Installed ({filteredExtensions.length})
+                  </Typography>
+                  <List sx={{ py: 0 }}>
+                    {filteredExtensions.map(extension => (
+                      <ListItem key={extension.id} sx={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                        <Avatar sx={{ mr: 2, backgroundColor: 'rgba(64, 196, 255, 0.2)' }}>
+                          <ExtensionIcon sx={{ color: 'rgba(64, 196, 255, 0.9)' }} />
+                        </Avatar>
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="subtitle1" fontWeight="medium">
+                              <Typography sx={{ color: 'white', fontWeight: 500 }}>
                           {extension.name}
                         </Typography>
-                        <Chip 
-                          label={extension.version} 
-                          size="small" 
-                          variant="outlined"
-                        />
+                              <Chip label={extension.version} size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
                       </Box>
                     }
                     secondary={
-                      <Box sx={{ mt: 0.5 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {extension.enabled ? 'Active' : 'Disabled'}
+                            <Typography sx={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.8rem' }}>
+                              {extension.description}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          ID: {extension.id}
-                        </Typography>
-                      </Box>
                     }
                   />
-                  
                   <ListItemSecondaryAction>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <IconButton 
-                        size="small"
-                        onClick={() => showExtensionInfo(extension)}
-                      >
-                        <InfoIcon />
-                      </IconButton>
-                      
                       <Switch
                         checked={extension.enabled}
                         onChange={(e) => toggleExtension(extension.id, e.target.checked)}
-                        color="primary"
+                              size="small"
                       />
-                      
                       <IconButton 
                         size="small"
-                        color="error"
-                        onClick={() => removeExtension(extension.id)}
+                              onClick={() => uninstallExtension(extension.id)}
+                              sx={{ color: 'rgba(255, 107, 107, 0.8)' }}
                       >
-                        <DeleteIcon />
+                              <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Box>
                   </ListItemSecondaryAction>
                 </ListItem>
               ))}
             </List>
+                </>
+              )}
+
+              {/* Available Extensions */}
+              {filteredAvailable.length > 0 && (
+                <>
+                  <Typography variant="subtitle2" sx={{ p: 2, color: 'rgba(255, 255, 255, 0.8)', fontWeight: 600 }}>
+                    Available ({filteredAvailable.length})
+                  </Typography>
+                  <List sx={{ py: 0 }}>
+                    {filteredAvailable.map(extension => (
+                      <ListItem key={extension.id} sx={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                        <Avatar sx={{ mr: 2, backgroundColor: 'rgba(255, 255, 255, 0.1)' }}>
+                          <ExtensionIcon sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />
+                        </Avatar>
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography sx={{ color: 'white', fontWeight: 500 }}>
+                                {extension.name}
+                              </Typography>
+                              {extension.rating && (
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                  <StarIcon sx={{ color: '#FFD700', fontSize: 16 }} />
+                                  <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.7rem', ml: 0.5 }}>
+                                    {extension.rating}
+                                  </Typography>
+                                </Box>
           )}
         </Box>
-
-        {/* Footer */}
-        <Box sx={{ 
-          p: 2, 
-          borderTop: '1px solid', 
-          borderColor: 'divider',
-          bgcolor: 'background.paper'
-        }}>
+                          }
+                          secondary={
+                            <Typography sx={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.8rem' }}>
+                              {extension.description}
+                            </Typography>
+                          }
+                        />
+                        <ListItemSecondaryAction>
           <Button 
-            fullWidth 
+                            size="small"
+                            startIcon={<InstallIcon />}
+                            onClick={() => {
+                              setSelectedExtension(extension);
+                              setInstallDialogOpen(true);
+                            }}
+                            sx={{
+                              color: 'rgba(64, 196, 255, 0.9)',
+                              borderColor: 'rgba(64, 196, 255, 0.5)',
+                              '&:hover': {
+                                backgroundColor: 'rgba(64, 196, 255, 0.1)',
+                              }
+                            }}
             variant="outlined" 
-            onClick={loadExtensions}
-            disabled={loading}
           >
-            Refresh Extensions
+                            Install
           </Button>
-        </Box>
-      </Paper>
-      </motion.div>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                  </List>
+                </>
+              )}
 
-      {/* Extension Info Dialog */}
-      <Dialog 
-        open={infoDialogOpen} 
-        onClose={() => setInfoDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          Extension Details
-        </DialogTitle>
-        <DialogContent>
-          {selectedExtension && (
-            <Box sx={{ pt: 1 }}>
-              <Typography variant="h6" gutterBottom>
-                {selectedExtension.name}
-              </Typography>
-              
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Version: {selectedExtension.version}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  ID: {selectedExtension.id}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Status: {selectedExtension.enabled ? 'Enabled' : 'Disabled'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Path: {selectedExtension.path}
-                </Typography>
-              </Box>
-
-              {selectedExtension.manifest && (
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Manifest Information:
+              {filteredExtensions.length === 0 && filteredAvailable.length === 0 && (
+                <Box sx={{ p: 3, textAlign: 'center' }}>
+                  <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                    No extensions found matching your criteria.
                   </Typography>
-                  <Box 
-                    component="pre" 
-                    sx={{ 
-                      bgcolor: 'grey.100', 
-                      p: 1, 
-                      borderRadius: 1,
-                      fontSize: '0.75rem',
-                      overflow: 'auto',
-                      maxHeight: 200
-                    }}
-                  >
-                    {JSON.stringify(selectedExtension.manifest, null, 2)}
-                  </Box>
                 </Box>
               )}
-            </Box>
+            </>
+          )}
+        </Box>
+      </Paper>
+
+      {/* Install Confirmation Dialog */}
+      <Dialog 
+        open={installDialogOpen}
+        onClose={() => setInstallDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            backgroundColor: 'rgba(25, 25, 25, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '15px',
+            color: 'white'
+          }
+        }}
+      >
+        <DialogTitle>Install Extension</DialogTitle>
+        <DialogContent>
+          {selectedExtension && (
+            <>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                {selectedExtension.name}
+              </Typography>
+              <Typography sx={{ mb: 2, color: 'rgba(255, 255, 255, 0.8)' }}>
+                {selectedExtension.description}
+                </Typography>
+              
+              {selectedExtension.permissions && selectedExtension.permissions.length > 0 && (
+                <>
+                  <Typography variant="subtitle2" sx={{ mb: 1, color: 'rgba(255, 255, 255, 0.9)' }}>
+                    This extension requires the following permissions:
+                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    {selectedExtension.permissions.map(permission => (
+                      <Chip
+                        key={permission}
+                        label={permission}
+                        size="small"
+                        sx={{ mr: 1, mb: 1, backgroundColor: 'rgba(255, 152, 0, 0.2)' }}
+                      />
+                    ))}
+                  </Box>
+                </>
+              )}
+              
+              <Alert severity="info" sx={{ backgroundColor: 'rgba(64, 196, 255, 0.1)' }}>
+                This extension will be downloaded and installed from the Chrome Web Store.
+              </Alert>
+            </>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInfoDialogOpen(false)}>
-            Close
+          <Button onClick={() => setInstallDialogOpen(false)} sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => selectedExtension && installExtension(selectedExtension)}
+            variant="contained"
+            sx={{
+              backgroundColor: 'rgba(64, 196, 255, 0.9)',
+              '&:hover': { backgroundColor: 'rgba(64, 196, 255, 1)' }
+            }}
+          >
+            Install
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+    </motion.div>
   );
 };
 

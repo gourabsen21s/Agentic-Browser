@@ -204,26 +204,115 @@ const App: React.FC = () => {
     }
   }, [activeTabId, navigateToUrl, createTab]);
 
-  const toggleChat = useCallback(() => {
-    setIsChatOpen(prev => !prev);
-  }, []);
+  const toggleChat = useCallback(async () => {
+    const isOpening = !isChatOpen;
+    
+    // Close other overlays when opening chat
+    if (isOpening) {
+      if (isExtensionsOpen) {
+        setIsExtensionsOpen(false);
+        try {
+          await window.electronAPI?.hideOverlay?.('extensions');
+        } catch (error) {
+          console.error('Error hiding extensions overlay:', error);
+        }
+      }
+    }
+    
+    setIsChatOpen(isOpening);
+    
+    try {
+      if (isOpening) {
+        await window.electronAPI?.showOverlay?.('chat', { width: 400, chromeHeight: lastChromeHeight.current });
+      } else {
+        await window.electronAPI?.hideOverlay?.('chat');
+      }
+    } catch (error) {
+      console.error('Error managing chat overlay:', error);
+    }
+  }, [isChatOpen, isExtensionsOpen]);
 
-  const toggleExtensions = useCallback(() => {
-    setIsExtensionsOpen(prev => !prev);
-  }, []);
+  const toggleExtensions = useCallback(async () => {
+    const isOpening = !isExtensionsOpen;
+    
+    // Close other overlays when opening extensions
+    if (isOpening) {
+      if (isChatOpen) {
+        setIsChatOpen(false);
+        try {
+          await window.electronAPI?.hideOverlay?.('chat');
+        } catch (error) {
+          console.error('Error hiding chat overlay:', error);
+        }
+      }
+    }
+    
+    setIsExtensionsOpen(isOpening);
+    
+    try {
+      if (isOpening) {
+        await window.electronAPI?.showOverlay?.('extensions', { width: 400, chromeHeight: lastChromeHeight.current });
+      } else {
+        await window.electronAPI?.hideOverlay?.('extensions');
+      }
+    } catch (error) {
+      console.error('Error managing extensions overlay:', error);
+    }
+  }, [isExtensionsOpen, isChatOpen]);
 
-  const toggleFind = useCallback(() => {
-    setIsFindOpen(prev => !prev);
-    if (isFindOpen) {
-      // Stop find when closing
-      window.electronAPI?.stopFindInPage?.();
-      setFindResults(undefined);
+  const toggleFind = useCallback(async () => {
+    const isOpening = !isFindOpen;
+    setIsFindOpen(isOpening);
+    
+    try {
+      if (isOpening) {
+        await window.electronAPI?.showOverlay?.('find', { chromeHeight: lastChromeHeight.current });
+      } else {
+        await window.electronAPI?.hideOverlay?.('find');
+        // Stop find when closing
+        window.electronAPI?.stopFindInPage?.();
+        setFindResults(undefined);
+      }
+    } catch (error) {
+      console.error('Error managing find overlay:', error);
     }
   }, [isFindOpen]);
 
-  const toggleSettings = useCallback(() => {
-    setIsSettingsOpen(prev => !prev);
-  }, []);
+  const toggleSettings = useCallback(async () => {
+    const isOpening = !isSettingsOpen;
+    
+    // Close other overlays when opening settings (settings is modal-like)
+    if (isOpening) {
+      if (isChatOpen) {
+        setIsChatOpen(false);
+        try {
+          await window.electronAPI?.hideOverlay?.('chat');
+        } catch (error) {
+          console.error('Error hiding chat overlay:', error);
+        }
+      }
+      if (isExtensionsOpen) {
+        setIsExtensionsOpen(false);
+        try {
+          await window.electronAPI?.hideOverlay?.('extensions');
+        } catch (error) {
+          console.error('Error hiding extensions overlay:', error);
+        }
+      }
+    }
+    
+    setIsSettingsOpen(isOpening);
+    
+    try {
+      if (isOpening) {
+        await window.electronAPI?.showOverlay?.('settings', { width: 600, chromeHeight: lastChromeHeight.current });
+      } else {
+        await window.electronAPI?.hideOverlay?.('settings');
+      }
+    } catch (error) {
+      console.error('Error managing settings overlay:', error);
+    }
+  }, [isSettingsOpen, isChatOpen, isExtensionsOpen]);
 
   const handleFind = useCallback(async (query: string, options: FindOptions) => {
     if (!query.trim()) {
@@ -557,12 +646,12 @@ const App: React.FC = () => {
               position: 'relative',
               zIndex: 1,
               marginLeft: '70px', // Account for static sidebar width
-              marginRight: (() => {
-                let margin = 0;
-                if (isChatOpen) margin += 400; // Chat interface width
-                if (isExtensionsOpen) margin += 400; // Extensions panel width
-                return `${margin}px`;
-              })(),
+                              marginRight: (() => {
+                  // Only one overlay should be open at a time now
+                  if (isChatOpen) return '400px'; // Chat interface width
+                  if (isExtensionsOpen) return '400px'; // Extensions panel width
+                  return '0px'; // No overlays open
+                })(),
               transition: 'margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
             }}
           >
@@ -618,21 +707,25 @@ const App: React.FC = () => {
             )}
           </AnimatePresence>
 
-          {/* Find Overlay */}
-          <FindOverlay
-            isOpen={isFindOpen}
-            onClose={() => setIsFindOpen(false)}
-            onFind={handleFind}
-            onFindNext={handleFindNext}
-            onFindPrevious={handleFindPrevious}
-            findResults={findResults}
-          />
+          {/* Find Overlay - Positioned above BrowserView */}
+          <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10001, pointerEvents: isFindOpen ? 'auto' : 'none' }}>
+            <FindOverlay
+              isOpen={isFindOpen}
+              onClose={() => setIsFindOpen(false)}
+              onFind={handleFind}
+              onFindNext={handleFindNext}
+              onFindPrevious={handleFindPrevious}
+              findResults={findResults}
+            />
+          </Box>
 
-          {/* Settings Panel */}
-          <SettingsPanel
-            isOpen={isSettingsOpen}
-            onClose={() => setIsSettingsOpen(false)}
-          />
+          {/* Settings Panel - Positioned above BrowserView */}
+          <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000, pointerEvents: isSettingsOpen ? 'auto' : 'none' }}>
+            <SettingsPanel
+              isOpen={isSettingsOpen}
+              onClose={() => setIsSettingsOpen(false)}
+            />
+          </Box>
           
           {/* Background gradient overlay */}
           <Box

@@ -116,10 +116,9 @@ const FindOverlay: React.FC<FindOverlayProps> = ({
           damping: 25
         }}
         style={{
-          position: 'fixed',
+          position: 'absolute',
           top: 70,
           right: 20,
-          zIndex: 1000, // Standard overlay z-index
           pointerEvents: 'auto',
         }}
       >

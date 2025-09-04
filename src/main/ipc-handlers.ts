@@ -65,6 +65,23 @@ function saveBookmarks(bookmarks: any[]): void {
 }
 
 export function setupIPC(viewManager: BrowserViewManager): void {
+  // Remove any existing handlers to prevent duplicate registration
+  const handlersToCleanup = [
+    'browser:navigate', 'browser:back', 'browser:forward', 'browser:reload',
+    'tab:create', 'tab:close', 'tab:switch', 'tab:update-title',
+    'settings:get', 'settings:set', 'settings:update',
+    'shortcuts:update', 'overlay:show', 'overlay:hide',
+    'bookmarks:get', 'bookmarks:add', 'bookmarks:remove', 'bookmarks:update',
+    'find:start', 'find:next', 'find:previous', 'find:stop',
+    'devtools:toggle', 'window:minimize', 'window:maximize', 'window:close', 'window:get-state',
+    'layout:set-chrome-height', 'window:set-sidebar-width',
+    'history:get', 'history:add', 'history:clear', 'downloads:get'
+  ];
+  
+  handlersToCleanup.forEach(handler => {
+    ipcMain.removeHandler(handler);
+  });
+
   // Browser navigation handlers
   ipcMain.handle('browser:navigate', async (event, url: string) => {
     try {
@@ -159,6 +176,106 @@ export function setupIPC(viewManager: BrowserViewManager): void {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       return { success: false, error: errorMessage };
+    }
+  });
+
+  // Shortcuts handlers
+  ipcMain.handle('shortcuts:update', async (event, shortcuts: Record<string, string>) => {
+    try {
+      const mainWindow = viewManager.getMainWindow();
+      const shortcutManager = (mainWindow as any).shortcutManager;
+      if (shortcutManager) {
+        shortcutManager.updateFromSettings(shortcuts);
+        return { success: true };
+      }
+      return { success: false, error: 'Shortcut manager not available' };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Track active overlays for proper sizing calculation
+  let activeOverlays = new Set<string>();
+
+  // Overlay management handlers
+  ipcMain.handle('overlay:show', async (event, overlayType: string, options?: any) => {
+    try {
+      console.log(`Showing overlay: ${overlayType}`, options);
+      
+      // Add to active overlays
+      activeOverlays.add(overlayType);
+      
+      // Calculate margins and special modes
+      let rightMargin = 0;
+      let collapseForSettings = false;
+      for (const overlay of activeOverlays) {
+        if (overlay === 'chat') rightMargin += 400;
+        else if (overlay === 'extensions') rightMargin += 400;
+        else if (overlay === 'settings') collapseForSettings = true; // settings takes over the window
+        else if (overlay === 'find') rightMargin += 420; // reserve gutter for find UI
+      }
+      
+      const mainWindow = viewManager.getMainWindow();
+      if (mainWindow) {
+        const bounds = mainWindow.getContentBounds();
+        const chromeHeight = options?.chromeHeight || 140;
+        const sidebarWidth = 70;
+        
+        if (collapseForSettings) {
+          // Hide BrowserView completely while settings is open
+          viewManager.resizeViews(0, 0);
+        } else {
+          // Normal mode: subtract sidebars and overlay gutters
+          const availableWidth = Math.max(0, bounds.width - sidebarWidth - rightMargin);
+          const availableHeight = Math.max(0, bounds.height - chromeHeight);
+          console.log(`[Overlay Show] Content: ${bounds.width}x${bounds.height}, RightMargin: ${rightMargin}, Available: ${availableWidth}x${availableHeight}`);
+          viewManager.resizeViews(availableWidth, availableHeight);
+        }
+      }
+      
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('overlay:hide', async (event, overlayType: string) => {
+    try {
+      console.log(`Hiding overlay: ${overlayType}`);
+      
+      // Remove from active overlays
+      activeOverlays.delete(overlayType);
+      
+      // Recompute margins / collapse state
+      let rightMargin = 0;
+      let collapseForSettings = false;
+      for (const overlay of activeOverlays) {
+        if (overlay === 'chat') rightMargin += 400;
+        else if (overlay === 'extensions') rightMargin += 400;
+        else if (overlay === 'settings') collapseForSettings = true;
+        else if (overlay === 'find') rightMargin += 420;
+      }
+      
+      const mainWindow = viewManager.getMainWindow();
+      if (mainWindow) {
+        const bounds = mainWindow.getContentBounds();
+        const chromeHeight = 140;
+        const sidebarWidth = 70;
+        
+        if (collapseForSettings) {
+          // Settings still open elsewhere – keep BrowserView hidden
+          viewManager.resizeViews(0, 0);
+        } else {
+          const availableWidth = Math.max(0, bounds.width - sidebarWidth - rightMargin);
+          const availableHeight = Math.max(0, bounds.height - chromeHeight);
+          console.log(`[Overlay Hide] Content: ${bounds.width}x${bounds.height}, RightMargin: ${rightMargin}, Available: ${availableWidth}x${availableHeight}`);
+          viewManager.resizeViews(availableWidth, availableHeight);
+        }
+      }
+      
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
   });
 
@@ -407,48 +524,8 @@ export function setupIPC(viewManager: BrowserViewManager): void {
     return { success: false, error: 'No active page' };
   });
 
+  // Set up find result forwarding for BrowserViews
+  // This will be handled by the BrowserViewManager when views are created
 
-  // Global shortcuts management
-  ipcMain.handle('shortcuts:update', async (event, shortcuts: Record<string, string>) => {
-    try {
-      const window = BrowserWindow.fromWebContents(event.sender);
-      if (window && (window as any).shortcutManager) {
-        (window as any).shortcutManager.updateFromSettings(shortcuts);
-        return { success: true };
-      }
-      return { success: false, error: 'Shortcut manager not available' };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      return { success: false, error: errorMessage };
-    }
-  });
 
-  // Overlay management - properly handle BrowserView stacking
-  ipcMain.handle('overlay:show', async (event, overlayType: string, options?: any) => {
-    try {
-      const window = BrowserWindow.fromWebContents(event.sender);
-      if (window && (window as any).browserViewManager) {
-        (window as any).browserViewManager.showOverlay(overlayType, options);
-        return { success: true };
-      }
-      return { success: false, error: 'BrowserView manager not available' };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      return { success: false, error: errorMessage };
-    }
-  });
-
-  ipcMain.handle('overlay:hide', async (event, overlayType: string) => {
-    try {
-      const window = BrowserWindow.fromWebContents(event.sender);
-      if (window && (window as any).browserViewManager) {
-        (window as any).browserViewManager.hideOverlay(overlayType);
-        return { success: true };
-      }
-      return { success: false, error: 'BrowserView manager not available' };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      return { success: false, error: errorMessage };
-    }
-  });
 }

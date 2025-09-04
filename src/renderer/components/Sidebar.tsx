@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Box, Tooltip, IconButton, Avatar, Divider, Paper, Fade, Zoom } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserIcon, PlusIcon, HomeIcon, BookmarkIcon, CogIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
+import { UserIcon, PlusIcon, HomeIcon, BookmarkIcon, CogIcon, ChatBubbleLeftEllipsisIcon, PuzzlePieceIcon } from '@heroicons/react/24/outline';
 import { AppShortcut } from '../types';
 
 interface SidebarProps {
@@ -9,12 +9,14 @@ interface SidebarProps {
   onShortcutClick: (url: string) => void;
   onToggleChat: () => void;
   isChatOpen: boolean;
+  onToggleExtensions: () => void;
+  isExtensionsOpen: boolean;
   onToggleSettings: () => void;
 }
 
 const SIDEBAR_WIDTH = 70;
 
-const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick, onToggleChat, isChatOpen, onToggleSettings }) => {
+const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick, onToggleChat, isChatOpen, onToggleExtensions, isExtensionsOpen, onToggleSettings }) => {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   // Inform main process about sidebar width on mount
@@ -302,11 +304,44 @@ const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick, onToggleC
                 </Tooltip>
               </motion.div>
 
+              {/* Extensions Toggle Button */}
+              <motion.div
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.77, duration: 0.3 }}
+              >
+                <Tooltip title={isExtensionsOpen ? "Close Extensions" : "Open Extensions"} placement="right" arrow>
+                  <IconButton
+                    onClick={onToggleExtensions}
+                    onMouseEnter={() => setHoveredItem('extensions')}
+                    onMouseLeave={() => setHoveredItem(null)}
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 2.5,
+                      bgcolor: isExtensionsOpen ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)',
+                      border: '1px solid',
+                      borderColor: isExtensionsOpen ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.08)',
+                      color: isExtensionsOpen ? '#4ade80' : 'rgba(255,255,255,0.8)',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      transform: hoveredItem === 'extensions' ? 'scale(1.05) translateY(-1px)' : 'scale(1)',
+                      '&:hover': {
+                        bgcolor: isExtensionsOpen ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)',
+                        color: isExtensionsOpen ? '#22c55e' : 'white',
+                        borderColor: isExtensionsOpen ? 'rgba(34,197,94,0.6)' : 'rgba(255,255,255,0.2)',
+                      },
+                    }}
+                  >
+                    <PuzzlePieceIcon width={18} height={18} />
+                  </IconButton>
+                </Tooltip>
+              </motion.div>
+
               {/* Settings */}
               <motion.div
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.8, duration: 0.3 }}
+                transition={{ delay: 0.82, duration: 0.3 }}
               >
                 <Tooltip title="Settings (Ctrl+,)" placement="right" arrow>
                   <IconButton
@@ -338,7 +373,7 @@ const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick, onToggleC
               <motion.div
                 initial={{ y: -20, opacity: 0, scale: 0.8, rotate: -180 }}
                 animate={{ y: 0, opacity: 1, scale: 1, rotate: 0 }}
-                transition={{ delay: 0.9, duration: 0.5, type: 'spring', stiffness: 200 }}
+                transition={{ delay: 0.95, duration: 0.5, type: 'spring', stiffness: 200 }}
                 whileHover={{ 
                   scale: 1.15, 
                   rotate: 90,

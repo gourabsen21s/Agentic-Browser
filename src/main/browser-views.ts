@@ -15,6 +15,8 @@ export class BrowserViewManager {
   private topChromeHeight = 96; // px
   // Width reserved for sidebar
   private sidebarWidth = 0; // px
+  // Track active overlays that affect BrowserView positioning
+  private activeOverlays: Set<string> = new Set();
 
   constructor(window: BrowserWindow) {
     this.window = window;
@@ -88,10 +90,32 @@ export class BrowserViewManager {
 
   private boundsBelowChrome(): Rectangle {
     const { width, height } = this.window.getContentBounds();
-    const y = this.topChromeHeight;
-    const h = Math.max(0, height - this.topChromeHeight);
-    const x = this.sidebarWidth;
-    const w = Math.max(0, width - this.sidebarWidth);
+    let y = this.topChromeHeight;
+    let x = this.sidebarWidth;
+    let w = Math.max(0, width - this.sidebarWidth);
+    let h = Math.max(0, height - this.topChromeHeight);
+
+    // Adjust bounds based on active overlays
+    if (this.activeOverlays.has('find')) {
+      // Find overlay appears in top-right, no bounds adjustment needed
+      // It uses high z-index in the renderer to appear above content
+    }
+    
+    if (this.activeOverlays.has('settings')) {
+      // Settings panel is fullscreen modal, hide BrowserView completely
+      return { x: 0, y: 0, width: 0, height: 0 };
+    }
+    
+    if (this.activeOverlays.has('extensions')) {
+      // Extensions panel appears on the right, reduce BrowserView width
+      w = Math.max(0, w - 400); // 400px width for extensions panel
+    }
+    
+    if (this.activeOverlays.has('chat')) {
+      // Chat interface appears on the right, reduce BrowserView width
+      w = Math.max(0, w - 400); // 400px width for chat interface
+    }
+
     return { x, y, width: w, height: h };
   }
 
@@ -287,5 +311,23 @@ export class BrowserViewManager {
   getActive(): TabEntry | null {
     if (!this.activeTabId) return null;
     return this.tabs.get(this.activeTabId) || null;
+  }
+
+  // Overlay management - properly handle BrowserView stacking
+  showOverlay(overlayType: string, options?: any): void {
+    console.log(`[BrowserViewManager] Showing overlay: ${overlayType}`);
+    this.activeOverlays.add(overlayType);
+    this.layoutActiveView(); // Re-layout BrowserView with new bounds
+  }
+
+  hideOverlay(overlayType: string): void {
+    console.log(`[BrowserViewManager] Hiding overlay: ${overlayType}`);
+    this.activeOverlays.delete(overlayType);
+    this.layoutActiveView(); // Re-layout BrowserView with restored bounds
+  }
+
+  // Get list of active overlays (for debugging)
+  getActiveOverlays(): string[] {
+    return Array.from(this.activeOverlays);
   }
 }

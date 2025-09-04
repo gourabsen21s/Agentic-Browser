@@ -105,6 +105,7 @@ app.whenReady().then(() => {
   // Initialize browser view manager
   if (win) {
     browserViewManager = new BrowserViewManager(win);
+    (win as any).browserViewManager = browserViewManager; // Store reference for IPC access
     setupIPC(browserViewManager);
     
     // Setup global shortcuts and store reference for IPC access

@@ -140,6 +140,15 @@ export interface ElectronAPI {
   removeTabUpdatedListeners: () => void;
   onTabSwitched: (callback: (payload: { tabId: string }) => void) => void;
   removeTabSwitchedListeners: () => void;
+
+  // Global shortcuts
+  onShortcut: (callback: (action: string) => void) => void;
+  removeShortcutListeners: () => void;
+  updateShortcuts: (shortcuts: Record<string, string>) => Promise<{ success: boolean; error?: string }>;
+
+  // Overlay management - properly handle BrowserView stacking
+  showOverlay: (overlayType: string, options?: any) => Promise<{ success: boolean; error?: string }>;
+  hideOverlay: (overlayType: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

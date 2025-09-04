@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Paper, 
@@ -121,6 +121,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
     resetToDefaults,
     resetCategory
   } = useSettings();
+
+  // Handle overlay management
+  useEffect(() => {
+    if (isOpen) {
+      // Notify main process that settings overlay is shown
+      window.electronAPI?.showOverlay?.('settings').catch(console.error);
+    } else {
+      // Notify main process that settings overlay is hidden
+      window.electronAPI?.hideOverlay?.('settings').catch(console.error);
+    }
+  }, [isOpen]);
 
   const handleSave = async () => {
     const success = await saveSettings();
@@ -554,7 +565,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
           bottom: 0,
           backgroundColor: 'rgba(0,0,0,0.8)',
           backdropFilter: 'blur(8px)',
-          zIndex: 999999, // High z-index to appear above BrowserView content
+          zIndex: 1200, // Settings panel z-index
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

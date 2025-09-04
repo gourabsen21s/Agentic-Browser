@@ -63,11 +63,16 @@ const FindOverlay: React.FC<FindOverlayProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
+    if (isOpen) {
+      // Notify main process that find overlay is shown
+      window.electronAPI?.showOverlay?.('find').catch(console.error);
       setTimeout(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
       }, 100);
+    } else {
+      // Notify main process that find overlay is hidden
+      window.electronAPI?.hideOverlay?.('find').catch(console.error);
     }
   }, [isOpen]);
 
@@ -114,7 +119,7 @@ const FindOverlay: React.FC<FindOverlayProps> = ({
           position: 'fixed',
           top: 70,
           right: 20,
-          zIndex: 999999, // Much higher z-index to appear above BrowserView content
+          zIndex: 1000, // Standard overlay z-index
           pointerEvents: 'auto',
         }}
       >

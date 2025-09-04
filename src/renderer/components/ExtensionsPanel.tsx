@@ -24,6 +24,7 @@ import {
   Delete as DeleteIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
+import { motion } from 'framer-motion';
 
 declare global {
   interface Window {
@@ -57,6 +58,17 @@ const ExtensionsPanel: React.FC<ExtensionsPanelProps> = ({ onClose }) => {
 
   useEffect(() => {
     loadExtensions();
+  }, []);
+
+  // Handle overlay management
+  useEffect(() => {
+    // Notify main process that extensions overlay is shown
+    window.electronAPI?.showOverlay?.('extensions').catch(console.error);
+    
+    // Cleanup on unmount
+    return () => {
+      window.electronAPI?.hideOverlay?.('extensions').catch(console.error);
+    };
   }, []);
 
   const loadExtensions = async () => {
@@ -126,19 +138,37 @@ const ExtensionsPanel: React.FC<ExtensionsPanelProps> = ({ onClose }) => {
 
   return (
     <>
-      <Paper 
-        elevation={3} 
-        sx={{
+      <motion.div
+        initial={{ x: 400, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: 400, opacity: 0 }}
+        transition={{ 
+          type: 'spring',
+          stiffness: 300,
+          damping: 30,
+          duration: 0.3
+        }}
+        style={{
           position: 'fixed',
           right: 0,
           top: 0,
           bottom: 0,
           width: 400,
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 999997, // High z-index to appear above BrowserView content
-          borderRadius: 0,
+          zIndex: 1100,
         }}
+      >
+        <Paper 
+          elevation={3} 
+          sx={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'linear-gradient(180deg, rgba(15,15,15,0.98) 0%, rgba(20,20,20,0.95) 50%, rgba(10,10,10,0.98) 100%)',
+            backdropFilter: 'blur(20px) saturate(180%)',
+            borderLeft: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 0,
+          }}
       >
         {/* Header */}
         <Box 
@@ -292,6 +322,7 @@ const ExtensionsPanel: React.FC<ExtensionsPanelProps> = ({ onClose }) => {
           </Button>
         </Box>
       </Paper>
+      </motion.div>
 
       {/* Extension Info Dialog */}
       <Dialog 

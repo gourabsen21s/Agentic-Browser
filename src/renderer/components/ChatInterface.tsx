@@ -60,6 +60,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onClose }) => {
     }
   }, [isOpen]);
 
+  // Handle overlay management
+  useEffect(() => {
+    if (isOpen) {
+      // Notify main process that chat overlay is shown
+      window.electronAPI?.showOverlay?.('chat').catch(console.error);
+    } else {
+      // Notify main process that chat overlay is hidden
+      window.electronAPI?.hideOverlay?.('chat').catch(console.error);
+    }
+  }, [isOpen]);
+
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
@@ -134,25 +145,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <motion.div
-      initial={{ x: 400, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 400, opacity: 0 }}
-      transition={{ 
-        type: 'spring',
-        stiffness: 300,
-        damping: 30
-      }}
-      style={{
+    <Box
+      sx={{
         position: 'fixed',
         right: 0,
         top: 0,
         bottom: 0,
         width: 400,
-        zIndex: 999998, // High z-index to appear above BrowserView content
+        zIndex: 100,
         pointerEvents: 'auto',
       }}
     >
+      <motion.div
+        initial={{ x: 400, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: 400, opacity: 0 }}
+        transition={{ 
+          type: 'spring',
+          stiffness: 300,
+          damping: 30
+        }}
+        style={{ width: '100%', height: '100%' }}
+      >
       <Paper
         elevation={0}
         sx={{
@@ -459,7 +473,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onClose }) => {
           </Typography>
         </Box>
       </Paper>
-    </motion.div>
+      </motion.div>
+    </Box>
   );
 };
 

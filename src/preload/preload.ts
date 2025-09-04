@@ -57,6 +57,10 @@ interface ElectronAPI {
   onShortcut: (callback: (action: string) => void) => void;
   removeShortcutListeners: () => void;
   updateShortcuts: (shortcuts: Record<string, string>) => Promise<{ success: boolean; error?: string }>;
+
+  // Overlay management
+  showOverlay: (overlayType: string, options?: any) => Promise<{ success: boolean; error?: string }>;
+  hideOverlay: (overlayType: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 // Create the secure API object
@@ -158,6 +162,10 @@ const electronAPI: ElectronAPI = {
   },
 
   updateShortcuts: (shortcuts: Record<string, string>) => ipcRenderer.invoke('shortcuts:update', shortcuts),
+
+  // Overlay management
+  showOverlay: (overlayType: string, options?: any) => ipcRenderer.invoke('overlay:show', overlayType, options),
+  hideOverlay: (overlayType: string) => ipcRenderer.invoke('overlay:hide', overlayType),
 };
 
 // Expose the API to the renderer process

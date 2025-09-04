@@ -422,4 +422,33 @@ export function setupIPC(viewManager: BrowserViewManager): void {
       return { success: false, error: errorMessage };
     }
   });
+
+  // Overlay management - properly handle BrowserView stacking
+  ipcMain.handle('overlay:show', async (event, overlayType: string, options?: any) => {
+    try {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      if (window && (window as any).browserViewManager) {
+        (window as any).browserViewManager.showOverlay(overlayType, options);
+        return { success: true };
+      }
+      return { success: false, error: 'BrowserView manager not available' };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  ipcMain.handle('overlay:hide', async (event, overlayType: string) => {
+    try {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      if (window && (window as any).browserViewManager) {
+        (window as any).browserViewManager.hideOverlay(overlayType);
+        return { success: true };
+      }
+      return { success: false, error: 'BrowserView manager not available' };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      return { success: false, error: errorMessage };
+    }
+  });
 }

@@ -9,6 +9,7 @@ import Homepage from './components/Homepage';
 import FindOverlay, { FindOptions, FindResults } from './components/FindOverlay';
 import SettingsPanel from './components/SettingsPanel';
 import ChatInterface from './components/ChatInterface';
+import ExtensionsPanel from './components/ExtensionsPanel';
 // WebviewContainer removed - BrowserView handles rendering directly
 import { AppShortcut } from './types';
 import { useBrowserState } from './hooks/useBrowserState';
@@ -105,6 +106,7 @@ const App: React.FC = () => {
   const { tabs, activeTabId } = browserState;
   const { createTab, closeTab, switchTab, navigateToUrl } = browserActions;
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isExtensionsOpen, setIsExtensionsOpen] = useState(false);
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [findResults, setFindResults] = useState<FindResults | undefined>();
@@ -204,6 +206,10 @@ const App: React.FC = () => {
 
   const toggleChat = useCallback(() => {
     setIsChatOpen(prev => !prev);
+  }, []);
+
+  const toggleExtensions = useCallback(() => {
+    setIsExtensionsOpen(prev => !prev);
   }, []);
 
   const toggleFind = useCallback(() => {
@@ -535,6 +541,8 @@ const App: React.FC = () => {
             onShortcutClick={handleShortcutClick}
             onToggleChat={toggleChat}
             isChatOpen={isChatOpen}
+            onToggleExtensions={toggleExtensions}
+            isExtensionsOpen={isExtensionsOpen}
             onToggleSettings={toggleSettings}
           />
 
@@ -549,7 +557,12 @@ const App: React.FC = () => {
               position: 'relative',
               zIndex: 1,
               marginLeft: '70px', // Account for static sidebar width
-              marginRight: isChatOpen ? '400px' : '0', // Account for chat interface width
+              marginRight: (() => {
+                let margin = 0;
+                if (isChatOpen) margin += 400; // Chat interface width
+                if (isExtensionsOpen) margin += 400; // Extensions panel width
+                return `${margin}px`;
+              })(),
               transition: 'margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
             }}
           >
@@ -592,6 +605,15 @@ const App: React.FC = () => {
               <ChatInterface
                 isOpen={isChatOpen}
                 onClose={() => setIsChatOpen(false)}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Extensions Panel */}
+          <AnimatePresence>
+            {isExtensionsOpen && (
+              <ExtensionsPanel
+                onClose={() => setIsExtensionsOpen(false)}
               />
             )}
           </AnimatePresence>

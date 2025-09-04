@@ -345,4 +345,81 @@ export function setupIPC(viewManager: BrowserViewManager): void {
     }
     return { success: false, error: 'Window not found' };
   });
+
+  // Find in page functionality
+  ipcMain.handle('find:start', async (event, searchText: string, options: any) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window) {
+      const browserView = window.getBrowserView();
+      if (browserView) {
+        const requestId = browserView.webContents.findInPage(searchText, {
+          forward: true,
+          findNext: false,
+          matchCase: options?.matchCase || false,
+          wordStart: options?.wholeWord || false,
+          medialCapitalAsWordStart: false
+        });
+        return { success: true, requestId };
+      }
+    }
+    return { success: false, error: 'No active page' };
+  });
+
+  ipcMain.handle('find:next', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window) {
+      const browserView = window.getBrowserView();
+      if (browserView) {
+        const requestId = browserView.webContents.findInPage('', {
+          forward: true,
+          findNext: true
+        });
+        return { success: true, requestId };
+      }
+    }
+    return { success: false, error: 'No active page' };
+  });
+
+  ipcMain.handle('find:previous', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window) {
+      const browserView = window.getBrowserView();
+      if (browserView) {
+        const requestId = browserView.webContents.findInPage('', {
+          forward: false,
+          findNext: true
+        });
+        return { success: true, requestId };
+      }
+    }
+    return { success: false, error: 'No active page' };
+  });
+
+  ipcMain.handle('find:stop', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window) {
+      const browserView = window.getBrowserView();
+      if (browserView) {
+        browserView.webContents.stopFindInPage('clearSelection');
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'No active page' };
+  });
+
+
+  // Global shortcuts management
+  ipcMain.handle('shortcuts:update', async (event, shortcuts: Record<string, string>) => {
+    try {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      if (window && (window as any).shortcutManager) {
+        (window as any).shortcutManager.updateFromSettings(shortcuts);
+        return { success: true };
+      }
+      return { success: false, error: 'Shortcut manager not available' };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      return { success: false, error: errorMessage };
+    }
+  });
 }

@@ -3,10 +3,12 @@ import * as path from 'path';
 import { setupIPC } from './ipc-handlers';
 import { BrowserViewManager } from './browser-views';
 import { createApplicationMenu } from './menu';
+import { setupShortcuts, ShortcutManager } from './shortcuts';
 
 // Keep a global reference of the window object
 let mainWindow: BrowserWindow | null = null;
 let browserViewManager: BrowserViewManager | null = null;
+let shortcutManager: ShortcutManager | null = null;
 
 /**
  * Create the main browser window with security-first configuration
@@ -104,6 +106,10 @@ app.whenReady().then(() => {
   if (win) {
     browserViewManager = new BrowserViewManager(win);
     setupIPC(browserViewManager);
+    
+    // Setup global shortcuts and store reference for IPC access
+    shortcutManager = setupShortcuts(win);
+    (win as any).shortcutManager = shortcutManager; // Store reference for IPC access
   }
 
   // Create application menu
@@ -159,6 +165,13 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
   } else {
     // In production, use default behavior
     callback(false);
+  }
+});
+
+// Clean up on app quit
+app.on('before-quit', () => {
+  if (shortcutManager) {
+    shortcutManager.unregisterAll();
   }
 });
 

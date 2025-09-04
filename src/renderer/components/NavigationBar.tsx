@@ -1,8 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { AppBar, Toolbar, IconButton, TextField, InputAdornment, Box, Tooltip, LinearProgress, CircularProgress, Fade, Chip } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeftIcon, ArrowRightIcon, ArrowPathIcon, MagnifyingGlassIcon, LockClosedIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import { Tab } from '../types';
+
+interface NavigationBarRef {
+  focusAddressBar: () => void;
+}
 
 interface NavigationBarProps {
   activeTab: Tab | undefined;
@@ -12,16 +16,23 @@ interface NavigationBarProps {
   onReload: () => void;
 }
 
-const NavigationBar: React.FC<NavigationBarProps> = ({
+const NavigationBar = forwardRef<NavigationBarRef, NavigationBarProps>(({
   activeTab,
   onNavigate,
   onBack,
   onForward,
   onReload
-}) => {
+}, ref) => {
   const [addressValue, setAddressValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focusAddressBar: () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }));
 
   useEffect(() => {
     if (activeTab && !isFocused) {
@@ -356,7 +367,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({
         )}
       </AnimatePresence>
     </AppBar>
-  );
-};
+      );
+});
 
 export default NavigationBar;

@@ -1,14 +1,20 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline, Box, GlobalStyles } from '@mui/material';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './components/Sidebar';
 import TabBar from './components/TabBar';
 import NavigationBar from './components/NavigationBar';
 import Homepage from './components/Homepage';
+import FindOverlay, { FindOptions, FindResults } from './components/FindOverlay';
+import SettingsPanel from './components/SettingsPanel';
+import ChatInterface from './components/ChatInterface';
 // WebviewContainer removed - BrowserView handles rendering directly
 import { AppShortcut } from './types';
 import { useBrowserState } from './hooks/useBrowserState';
+import { useGestureNavigation } from './hooks/useGestureNavigation';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useSettings } from './hooks/useSettings';
 
 const darkTheme = createTheme({
   palette: {
@@ -98,9 +104,16 @@ const App: React.FC = () => {
   const [browserState, browserActions] = useBrowserState();
   const { tabs, activeTabId } = browserState;
   const { createTab, closeTab, switchTab, navigateToUrl } = browserActions;
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isFindOpen, setIsFindOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [findResults, setFindResults] = useState<FindResults | undefined>();
   
   const chromeRef = useRef<HTMLDivElement | null>(null);
   const lastChromeHeight = useRef<number>(0);
+  const navigationBarRef = useRef<{ focusAddressBar: () => void }>(null);
+  
+  const { settings } = useSettings();
 
   const reportChromeHeight = useCallback(() => {
     try {
@@ -150,6 +163,300 @@ const App: React.FC = () => {
   const handleShortcutClick = (url: string) => {
     createTab(url);
   };
+
+  const handleBack = async () => {
+    await window.electronAPI?.goBack?.();
+  };
+
+  const handleForward = async () => {
+    await window.electronAPI?.goForward?.();
+  };
+
+  const handleReload = async () => {
+    await window.electronAPI?.reload?.();
+  };
+
+  const handleNextTab = useCallback(() => {
+    if (tabs.length <= 1) return;
+    const currentIndex = tabs.findIndex(tab => tab.id === activeTabId);
+    const nextIndex = (currentIndex + 1) % tabs.length;
+    switchTab(tabs[nextIndex].id);
+  }, [tabs, activeTabId, switchTab]);
+
+  const handlePrevTab = useCallback(() => {
+    if (tabs.length <= 1) return;
+    const currentIndex = tabs.findIndex(tab => tab.id === activeTabId);
+    const prevIndex = currentIndex === 0 ? tabs.length - 1 : currentIndex - 1;
+    switchTab(tabs[prevIndex].id);
+  }, [tabs, activeTabId, switchTab]);
+
+  const handleFocusAddressBar = useCallback(() => {
+    navigationBarRef.current?.focusAddressBar?.();
+  }, []);
+
+  const handleHome = useCallback(() => {
+    if (activeTabId) {
+      navigateToUrl('https://www.google.com');
+    } else {
+      createTab('https://www.google.com');
+    }
+  }, [activeTabId, navigateToUrl, createTab]);
+
+  const toggleChat = useCallback(() => {
+    setIsChatOpen(prev => !prev);
+  }, []);
+
+  const toggleFind = useCallback(() => {
+    setIsFindOpen(prev => !prev);
+    if (isFindOpen) {
+      // Stop find when closing
+      window.electronAPI?.stopFindInPage?.();
+      setFindResults(undefined);
+    }
+  }, [isFindOpen]);
+
+  const toggleSettings = useCallback(() => {
+    setIsSettingsOpen(prev => !prev);
+  }, []);
+
+  const handleFind = useCallback(async (query: string, options: FindOptions) => {
+    if (!query.trim()) {
+      setFindResults(undefined);
+      return;
+    }
+    
+    try {
+      const result = await window.electronAPI?.findInPage?.(query, options);
+      if (result?.success) {
+        // Simulate find results for now - in real implementation this would come from IPC events
+        setFindResults({
+          activeMatchOrdinal: 1,
+          matches: Math.floor(Math.random() * 10) + 1 // Random for demo
+        });
+      }
+    } catch (error) {
+      console.error('Find failed:', error);
+      setFindResults({
+        activeMatchOrdinal: 0,
+        matches: 0
+      });
+    }
+  }, []);
+
+  const handleFindNext = useCallback(async () => {
+    try {
+      await window.electronAPI?.findNext?.();
+    } catch (error) {
+      console.error('Find next failed:', error);
+    }
+  }, []);
+
+  const handleFindPrevious = useCallback(async () => {
+    try {
+      await window.electronAPI?.findPrevious?.();
+    } catch (error) {
+      console.error('Find previous failed:', error);
+    }
+  }, []);
+
+  const handleDevTools = useCallback(async () => {
+    try {
+      await window.electronAPI?.devtools?.();
+    } catch (error) {
+      console.error('DevTools toggle failed:', error);
+    }
+  }, []);
+
+  const handleSwitchToTab = useCallback((index: number) => {
+    if (index >= 0 && index < tabs.length) {
+      switchTab(tabs[index].id);
+    }
+  }, [tabs, switchTab]);
+
+  // Gesture navigation callbacks
+  const gestureCallbacks = {
+    // Single finger gestures
+    onSwipeLeft: handleNextTab,
+    onSwipeRight: handlePrevTab,
+    onSwipeUp: () => {
+      if (tabs.length === 0) {
+        createTab();
+      }
+    },
+    onSwipeDown: toggleChat,
+    
+    // Two finger gestures
+    onTwoFingerSwipeLeft: () => {
+      console.log('Two finger swipe left - previous page');
+      handleBack();
+    },
+    onTwoFingerSwipeRight: () => {
+      console.log('Two finger swipe right - next page');
+      handleForward();
+    },
+    onTwoFingerSwipeUp: () => {
+      console.log('Two finger swipe up - new tab');
+      createTab();
+    },
+    onTwoFingerSwipeDown: () => {
+      console.log('Two finger swipe down - close tab');
+      if (activeTabId) {
+        closeTab(activeTabId);
+      }
+    },
+    
+    // Three finger gestures
+    onThreeFingerSwipeLeft: () => {
+      console.log('Three finger swipe left - show all tabs');
+      // Could implement tab overview
+    },
+    onThreeFingerSwipeRight: () => {
+      console.log('Three finger swipe right - hide all tabs');
+      // Could implement minimize
+    },
+    onThreeFingerSwipeUp: () => {
+      console.log('Three finger swipe up - show settings');
+      toggleSettings();
+    },
+    onThreeFingerSwipeDown: () => {
+      console.log('Three finger swipe down - show find');
+      toggleFind();
+    },
+    
+    // Advanced gestures
+    onLongPress: (x: number, y: number) => {
+      console.log(`Long press at ${x}, ${y} - show context menu`);
+      // Could implement context menu
+    },
+    onDoubleTap: (x: number, y: number) => {
+      console.log(`Double tap at ${x}, ${y} - zoom or reload`);
+      handleReload();
+    },
+    onPinchIn: () => {
+      console.log('Pinch in - zoom out');
+      // Could implement zoom
+    },
+    onPinchOut: () => {
+      console.log('Pinch out - zoom in');
+      // Could implement zoom
+    },
+    onRotate: (angle: number) => {
+      console.log(`Rotate gesture - angle: ${angle}`);
+      // Could implement rotation actions
+    }
+  };
+
+  // Keyboard shortcuts callbacks
+  const keyboardCallbacks = {
+    onNewTab: () => createTab(),
+    onCloseTab: () => {
+      if (activeTabId) {
+        closeTab(activeTabId);
+      }
+    },
+    onNextTab: handleNextTab,
+    onPrevTab: handlePrevTab,
+    onRefresh: handleReload,
+    onBack: handleBack,
+    onForward: handleForward,
+    onFocusAddressBar: () => navigationBarRef.current?.focusAddressBar(),
+    onFind: toggleFind,
+    onDevTools: handleDevTools,
+    onZoomIn: () => {
+      // TODO: Implement zoom functionality
+      console.log('Zoom in functionality not implemented yet');
+    },
+    onZoomOut: () => {
+      // TODO: Implement zoom functionality
+      console.log('Zoom out functionality not implemented yet');
+    },
+    onZoomReset: () => {
+      // TODO: Implement zoom functionality
+      console.log('Zoom reset functionality not implemented yet');
+    },
+    onHome: handleHome,
+    onToggleChat: toggleChat,
+    onToggleSettings: toggleSettings,
+    onSwitchToTab: handleSwitchToTab,
+  };
+
+  // Initialize gesture navigation (only if enabled in settings)
+  useGestureNavigation(settings.enableGestures ? gestureCallbacks : {});
+
+  // Initialize keyboard shortcuts
+  useKeyboardShortcuts(keyboardCallbacks, settings.shortcuts);
+
+  // Handle global shortcuts from main process
+  useEffect(() => {
+    const handleGlobalShortcut = (action: string) => {
+      console.log('Global shortcut triggered:', action);
+      
+      switch (action) {
+        case 'new-tab':
+          createTab();
+          break;
+        case 'close-tab':
+          if (activeTabId) {
+            closeTab(activeTabId);
+          }
+          break;
+        case 'next-tab':
+          handleNextTab();
+          break;
+        case 'prev-tab':
+          handlePrevTab();
+          break;
+        case 'refresh':
+          handleReload();
+          break;
+        case 'back':
+          handleBack();
+          break;
+        case 'forward':
+          handleForward();
+          break;
+        case 'focus-address':
+          navigationBarRef.current?.focusAddressBar();
+          break;
+        case 'find':
+          toggleFind();
+          break;
+        case 'devtools':
+          handleDevTools();
+          break;
+        case 'home':
+          handleHome();
+          break;
+        case 'toggle-chat':
+          toggleChat();
+          break;
+        case 'toggle-settings':
+          toggleSettings();
+          break;
+        case 'tab-1':
+        case 'tab-2':
+        case 'tab-3':
+        case 'tab-4':
+        case 'tab-5':
+        case 'tab-6':
+        case 'tab-7':
+        case 'tab-8':
+        case 'tab-9':
+          const tabIndex = parseInt(action.split('-')[1]) - 1;
+          handleSwitchToTab(tabIndex);
+          break;
+        default:
+          console.log('Unhandled global shortcut:', action);
+      }
+    };
+
+    // Listen for global shortcuts
+    window.electronAPI?.onShortcut?.(handleGlobalShortcut);
+
+    return () => {
+      window.electronAPI?.removeShortcutListeners?.();
+    };
+  }, [createTab, closeTab, activeTabId, handleNextTab, handlePrevTab, handleReload, handleBack, handleForward, toggleFind, handleDevTools, handleHome, toggleChat, toggleSettings, handleSwitchToTab]);
 
   const shortcuts: AppShortcut[] = [
     {
@@ -223,7 +530,13 @@ const App: React.FC = () => {
           position: 'relative'
         }}>
           {/* Hover-based Sidebar */}
-          <Sidebar shortcuts={shortcuts} onShortcutClick={handleShortcutClick} />
+          <Sidebar 
+            shortcuts={shortcuts} 
+            onShortcutClick={handleShortcutClick}
+            onToggleChat={toggleChat}
+            isChatOpen={isChatOpen}
+            onToggleSettings={toggleSettings}
+          />
 
           {/* Main content area */}
           <Box 
@@ -235,7 +548,9 @@ const App: React.FC = () => {
               minHeight: 0,
               position: 'relative',
               zIndex: 1,
-              marginLeft: '70px' // Account for static sidebar width
+              marginLeft: '70px', // Account for static sidebar width
+              marginRight: isChatOpen ? '400px' : '0', // Account for chat interface width
+              transition: 'margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
             }}
           >
             <motion.div
@@ -252,11 +567,12 @@ const App: React.FC = () => {
                 onCreateTab={() => createTab()}
               />
               <NavigationBar 
+                ref={navigationBarRef}
                 activeTab={activeTab}
                 onNavigate={handleNavigate}
-                onBack={async () => { await window.electronAPI?.goBack?.(); }}
-                onForward={async () => { await window.electronAPI?.goForward?.(); }}
-                onReload={async () => { await window.electronAPI?.reload?.(); }}
+                onBack={handleBack}
+                onForward={handleForward}
+                onReload={handleReload}
               />
             </motion.div>
             
@@ -269,6 +585,32 @@ const App: React.FC = () => {
             ) : null}
             {/* BrowserView renders content directly when tabs exist */}
           </Box>
+          
+          {/* Chat Interface */}
+          <AnimatePresence>
+            {isChatOpen && (
+              <ChatInterface
+                isOpen={isChatOpen}
+                onClose={() => setIsChatOpen(false)}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Find Overlay */}
+          <FindOverlay
+            isOpen={isFindOpen}
+            onClose={() => setIsFindOpen(false)}
+            onFind={handleFind}
+            onFindNext={handleFindNext}
+            onFindPrevious={handleFindPrevious}
+            findResults={findResults}
+          />
+
+          {/* Settings Panel */}
+          <SettingsPanel
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+          />
           
           {/* Background gradient overlay */}
           <Box

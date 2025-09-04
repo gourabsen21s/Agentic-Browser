@@ -13,10 +13,6 @@ interface ElectronAPI {
   closeTab: (tabId: string) => Promise<{ success: boolean; tabId: string; nextActiveId?: string | null }>;
   switchTab: (tabId: string) => Promise<{ success: boolean }>;
 
-  // Settings
-  getSetting: (key: string) => Promise<{ success: boolean; value: any }>;
-  setSetting: (key: string, value: any) => Promise<{ success: boolean }>;
-
   // Bookmarks
   getBookmarks: () => Promise<{ success: boolean; bookmarks: Array<{ title: string; url: string }> }>;
   addBookmark: (bookmark: { title: string; url: string }) => Promise<{ success: boolean }>;
@@ -40,6 +36,27 @@ interface ElectronAPI {
   removeTabUpdatedListeners: () => void;
   onTabSwitched: (callback: (payload: { tabId: string }) => void) => void;
   removeTabSwitchedListeners: () => void;
+
+  // DevTools
+  devtools: () => Promise<{ success: boolean }>;
+
+  // Find in page
+  findInPage: (searchText: string, options?: any) => Promise<{ success: boolean; requestId?: number }>;
+  findNext: () => Promise<{ success: boolean; requestId?: number }>;
+  findPrevious: () => Promise<{ success: boolean; requestId?: number }>;
+  stopFindInPage: () => Promise<{ success: boolean }>;
+  onFindResult: (callback: (result: any) => void) => void;
+  removeFindResultListeners: () => void;
+
+  // Settings management
+  getSetting: (key: string) => Promise<{ success: boolean; value?: any; error?: string }>;
+  setSetting: (key: string, value: any) => Promise<{ success: boolean; error?: string }>;
+  deleteSetting: (key: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Global shortcuts
+  onShortcut: (callback: (action: string) => void) => void;
+  removeShortcutListeners: () => void;
+  updateShortcuts: (shortcuts: Record<string, string>) => Promise<{ success: boolean; error?: string }>;
 }
 
 // Create the secure API object
@@ -55,9 +72,7 @@ const electronAPI: ElectronAPI = {
   closeTab: (tabId: string) => ipcRenderer.invoke('tab:close', tabId),
   switchTab: (tabId: string) => ipcRenderer.invoke('tab:switch', tabId),
 
-  // Settings methods
-  getSetting: (key: string) => ipcRenderer.invoke('settings:get', key),
-  setSetting: (key: string, value: any) => ipcRenderer.invoke('settings:set', key, value),
+  // Settings methods (moved to the bottom to avoid duplicates)
 
   // Bookmarks methods
   getBookmarks: () => ipcRenderer.invoke('bookmarks:get'),
@@ -110,6 +125,39 @@ const electronAPI: ElectronAPI = {
   removeTabSwitchedListeners: () => {
     ipcRenderer.removeAllListeners('tab:switched');
   },
+
+  // DevTools
+  devtools: () => ipcRenderer.invoke('devtools:toggle'),
+
+  // Find in page
+  findInPage: (searchText: string, options?: any) => ipcRenderer.invoke('find:start', searchText, options),
+  findNext: () => ipcRenderer.invoke('find:next'),
+  findPrevious: () => ipcRenderer.invoke('find:previous'),
+  stopFindInPage: () => ipcRenderer.invoke('find:stop'),
+  
+  onFindResult: (callback: (result: any) => void) => {
+    ipcRenderer.on('found-in-page', (_, result) => callback(result));
+  },
+  
+  removeFindResultListeners: () => {
+    ipcRenderer.removeAllListeners('found-in-page');
+  },
+
+  // Settings management
+  getSetting: (key: string) => ipcRenderer.invoke('settings:get', key),
+  setSetting: (key: string, value: any) => ipcRenderer.invoke('settings:set', key, value),
+  deleteSetting: (key: string) => ipcRenderer.invoke('settings:delete', key),
+
+  // Global shortcuts
+  onShortcut: (callback: (action: string) => void) => {
+    ipcRenderer.on('shortcut:triggered', (_, action) => callback(action));
+  },
+  
+  removeShortcutListeners: () => {
+    ipcRenderer.removeAllListeners('shortcut:triggered');
+  },
+
+  updateShortcuts: (shortcuts: Record<string, string>) => ipcRenderer.invoke('shortcuts:update', shortcuts),
 };
 
 // Expose the API to the renderer process

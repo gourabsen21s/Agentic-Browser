@@ -136,7 +136,7 @@ const ExtensionsPanel: React.FC<ExtensionsPanelProps> = ({ onClose }) => {
           width: 400,
           display: 'flex',
           flexDirection: 'column',
-          zIndex: 10000,
+          zIndex: 999997, // High z-index to appear above BrowserView content
           borderRadius: 0,
         }}
       >

@@ -1,17 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Box, Tooltip, IconButton, Avatar, Divider, Paper, Fade, Zoom } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserIcon, PlusIcon, HomeIcon, BookmarkIcon, CogIcon } from '@heroicons/react/24/outline';
+import { UserIcon, PlusIcon, HomeIcon, BookmarkIcon, CogIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/outline';
 import { AppShortcut } from '../types';
 
 interface SidebarProps {
   shortcuts: AppShortcut[];
   onShortcutClick: (url: string) => void;
+  onToggleChat: () => void;
+  isChatOpen: boolean;
+  onToggleSettings: () => void;
 }
 
 const SIDEBAR_WIDTH = 70;
 
-const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick }) => {
+const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick, onToggleChat, isChatOpen, onToggleSettings }) => {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   // Inform main process about sidebar width on mount
@@ -266,14 +269,48 @@ const Sidebar: React.FC<SidebarProps> = ({ shortcuts, onShortcutClick }) => {
               {/* Spacer */}
               <Box sx={{ flex: 1 }} />
 
+              {/* Chat Toggle Button */}
+              <motion.div
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.75, duration: 0.3 }}
+              >
+                <Tooltip title={isChatOpen ? "Close Chat (Ctrl+J)" : "Open Chat (Ctrl+J)"} placement="right" arrow>
+                  <IconButton
+                    onClick={onToggleChat}
+                    onMouseEnter={() => setHoveredItem('chat')}
+                    onMouseLeave={() => setHoveredItem(null)}
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 2.5,
+                      bgcolor: isChatOpen ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.05)',
+                      border: '1px solid',
+                      borderColor: isChatOpen ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.08)',
+                      color: isChatOpen ? '#a78bfa' : 'rgba(255,255,255,0.8)',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      transform: hoveredItem === 'chat' ? 'scale(1.05) translateY(-1px)' : 'scale(1)',
+                      '&:hover': {
+                        bgcolor: isChatOpen ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.1)',
+                        color: isChatOpen ? '#8b5cf6' : 'white',
+                        borderColor: isChatOpen ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.2)',
+                      },
+                    }}
+                  >
+                    <ChatBubbleLeftEllipsisIcon width={18} height={18} />
+                  </IconButton>
+                </Tooltip>
+              </motion.div>
+
               {/* Settings */}
               <motion.div
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.8, duration: 0.3 }}
               >
-                <Tooltip title="Settings" placement="right" arrow>
+                <Tooltip title="Settings (Ctrl+,)" placement="right" arrow>
                   <IconButton
+                    onClick={onToggleSettings}
                     onMouseEnter={() => setHoveredItem('settings')}
                     onMouseLeave={() => setHoveredItem(null)}
                     sx={{
